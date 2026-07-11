@@ -1,0 +1,67 @@
+{
+  "name": "Coursera Tool - Toolkit for Coursera's stuff",
+  "description": "Extension helps bypass videos & readings, auto do quizz, auto submit assignment, auto grade reviews, get shareable links in Coursera",
+  "version": "1.0.8.3",
+  "manifest_version": 3,
+  "icons": {
+    "48": "img/icon-edge.png"
+  },
+  "action": {
+    "default_popup": "popup.html",
+    "default_icon": "img/icon-edge.png"
+  },
+  "background": {
+    "service_worker": "service-worker-loader.js",
+    "type": "module"
+  },
+  "content_scripts": [
+    {
+      "js": [
+        "assets/index.ts-loader-cd063857.js"
+      ],
+      "matches": [
+        "https://www.coursera.org/*"
+      ],
+      "css": [
+        "assets/index-b3d75336.css"
+      ]
+    }
+  ],
+  "homepage_url": "https://www.coursera.org",
+  "web_accessible_resources": [
+    {
+      "matches": [],
+      "resources": [
+        "img/icon-edge.png"
+      ],
+      "use_dynamic_url": false
+    },
+    {
+      "matches": [
+        "<all_urls>"
+      ],
+      "resources": [
+        "script.js"
+      ],
+      "use_dynamic_url": false
+    },
+    {
+      "matches": [
+        "https://www.coursera.org/*"
+      ],
+      "resources": [
+        "assets/chunk-b3bbf355.js"
+      ],
+      "use_dynamic_url": false
+    }
+  ],
+  "permissions": [
+    "storage",
+    "cookies",
+    "tabs",
+    "declarativeNetRequest"
+  ],
+  "host_permissions": [
+    "<all_urls>"
+  ]
+}
