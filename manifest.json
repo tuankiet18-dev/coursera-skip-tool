@@ -1,0 +1,33 @@
+{
+  "name": "Coursera Skip Video",
+  "description": "Tự động đánh dấu hoàn thành (skip) video và bài đọc trên Coursera.",
+  "version": "1.0.0",
+  "manifest_version": 3,
+  "icons": {
+    "48": "icon.png",
+    "128": "icon.png"
+  },
+  "action": {
+    "default_popup": "popup.html",
+    "default_icon": "icon.png"
+  },
+  "background": {
+    "service_worker": "background.js",
+    "type": "module"
+  },
+  "content_scripts": [
+    {
+      "js": ["content.js"],
+      "matches": ["https://www.coursera.org/*"],
+      "run_at": "document_idle"
+    }
+  ],
+  "permissions": [
+    "storage",
+    "tabs",
+    "activeTab"
+  ],
+  "host_permissions": [
+    "https://www.coursera.org/*"
+  ]
+}
