@@ -1,46 +1,46 @@
 # Coursera Skip Video (Clean Version)
 
-## 🌟 Giới thiệu
+## 🌟 Introduction
 
-Đây là bản **viết lại hoàn toàn an toàn (Clean Rebuild)** của tiện ích mở rộng "Coursera Skip Video" (hay Coursera Tool). 
+This is a **completely safe rewritten (Clean Rebuild)** version of the "Coursera Skip Video" (or Coursera Tool) extension.
 
-Phiên bản gốc của extension này bị phát hiện chứa các đoạn mã độc hại cực kỳ nguy hiểm (chuyên đánh cắp tài khoản và điều khiển từ xa). Do đó, tôi đã **tự viết lại toàn bộ mã nguồn** ở thư mục gốc (root) nhằm mang đến các tính năng tự động hóa trên Coursera một cách **an toàn 100%**. Mã nguồn mới loại bỏ hoàn toàn các đoạn mã ẩn, không thu thập cookie, và không lén lút gửi dữ liệu của bạn đi bất cứ đâu.
+The original version of this extension was found to contain highly dangerous malicious code (specializing in account theft and remote control). Therefore, I have **rewritten the entire source code from scratch** in the root directory to provide automation features on Coursera in a **100% safe manner**. The new source code completely removes hidden code, does not collect cookies, and does not secretly send your data anywhere.
 
-## 🚀 Các tính năng chính (Bản Sạch)
+## 🚀 Key Features (Clean Version)
 
-- **Tự động hoàn thành (Bypass/Skip):** Tự động bỏ qua và đánh dấu hoàn thành các bài đọc và video trên Coursera.
-- **Tự động làm bài tập & trắc nghiệm (Auto Quiz):** Hỗ trợ tự động giải các bài kiểm tra.
-- **An toàn & Minh bạch:** Mã nguồn mở, trực quan, hoàn toàn không có mã độc hay các hành vi đánh cắp dữ liệu.
+- **Auto Complete (Bypass/Skip):** Automatically skip and mark Coursera readings and videos as completed.
+- **Auto Quiz:** Supports automatically solving quizzes.
+- **Safe & Transparent:** Open-source, transparent, and completely free of malware or data theft behaviors.
 
-## 📂 Cấu trúc Repository
+## 📂 Repository Structure
 
-Dự án này được phân chia thành hai phần rõ rệt:
+This project is divided into two distinct parts:
 
-### 1. Phần an toàn (Mã nguồn có thể sử dụng)
-Toàn bộ các file nằm ở **thư mục gốc** (như `manifest.json`, `background.js`, `content.js`, `popup.html`, v.v...) là **mã nguồn sạch do tôi tự viết lại**. Bạn hoàn toàn có thể yên tâm sử dụng thư mục này để load vào trình duyệt.
+### 1. Safe Part (Usable Source Code)
+All files located in the **root directory** (such as `manifest.json`, `background.js`, `content.js`, `popup.html`, etc.) are **clean source code rewritten by me**. You can safely use this directory to load into your browser.
 
-### 2. Phần phân tích bảo mật & Mã độc của Hacker (Chỉ để tham khảo)
-- ⚠️ **Thư mục `build/`**: Chứa mã nguồn gốc của hacker (đã bị làm rối - obfuscated). Mã này chứa mã độc và được giữ lại **chỉ với mục đích nghiên cứu bảo mật và làm bằng chứng**. **TUYỆT ĐỐI KHÔNG** load thư mục này vào trình duyệt!
-- `BUILD_FORENSIC_REPORT.md`: Báo cáo giám định chi tiết về các hành vi đánh cắp dữ liệu trong phiên bản gốc.
-- Các file `*decode*.js` (`real_decode.js`, `decoder.js`, `correct_decode.js`...): Các đoạn script do tôi tạo ra nhằm dịch ngược, gỡ rối (deobfuscate) mã độc của hacker để viết báo cáo.
+### 2. Security Analysis & Hacker's Malware (For Reference Only)
+- ⚠️ **`build/` directory**: Contains the hacker's original source code (obfuscated). This code contains malware and is kept **strictly for security research and evidentiary purposes**. **ABSOLUTELY DO NOT** load this directory into your browser!
+- `BUILD_FORENSIC_REPORT.md`: A detailed forensic report on data theft behaviors in the original version.
+- `*decode*.js` files (`real_decode.js`, `decoder.js`, `correct_decode.js`...): Scripts created by me to reverse engineer and deobfuscate the hacker's malware to write the report.
 
-## 🕵️‍♂️ Về phiên bản gốc (Malicious Version)
+## 🕵️‍♂️ About the Original Version (Malicious Version)
 
-Như được mô tả kỹ trong báo cáo `BUILD_FORENSIC_REPORT.md`, tiện ích gốc có chứa mã độc rất tinh vi:
-- **Đánh cắp Session Cookie:** Tự động thu thập `CAUTH` và `CSRF3-Token`. Kẻ gian có thể dùng nó để chiếm quyền tài khoản Coursera của bạn.
-- **Đánh cắp thông tin cá nhân:** Lấy cắp email và `userId`.
-- **Mạng lưới điều khiển (C2):** Liên tục nhận lệnh từ xa thông qua `metadata.json` của hacker.
-- **Lộ API Key:** Lén lút gửi API Key (Gemini) của người dùng về server của kẻ tấn công.
+As detailed in the `BUILD_FORENSIC_REPORT.md` report, the original extension contains highly sophisticated malware:
+- **Session Cookie Theft:** Automatically collects `CAUTH` and `CSRF3-Token`. Malicious actors can use this to hijack your Coursera account.
+- **Personal Information Theft:** Steals email and `userId`.
+- **Command and Control (C2) Network:** Continuously receives remote commands via the hacker's `metadata.json`.
+- **API Key Leakage:** Secretly sends the user's API Key (Gemini) to the attacker's server.
 
-> 💡 **Khuyến cáo:** Nếu bạn đã từng dùng bản gốc của hacker từ các nguồn trôi nổi, hãy **đăng xuất tài khoản Coursera** ngay lập tức (để vô hiệu hóa cookie cũ), đổi mật khẩu và thu hồi (revoke) các API Key đã từng cung cấp.
+> 💡 **Recommendation:** If you have ever used the hacker's original version from unverified sources, **log out of your Coursera account** immediately (to invalidate old cookies), change your password, and revoke any API Keys you have provided.
 
 ---
 
-## 🛠 Hướng dẫn cài đặt (Bản Sạch)
+## 🛠 Installation Guide (Clean Version)
 
-1. Tải toàn bộ repository này về máy.
-2. Mở trình duyệt Chrome / Edge, truy cập vào trang Quản lý tiện ích mở rộng: `chrome://extensions/`.
-3. Bật **Chế độ dành cho nhà phát triển (Developer mode)** ở góc trên bên phải.
-4. Nhấn vào nút **Tải tiện ích đã giải nén (Load unpacked)**.
-5. Chọn **thư mục gốc** của repository này (tuyệt đối không chọn thư mục `build`).
-6. Hoàn tất! Tiện ích đã sẵn sàng để sử dụng an toàn trên Coursera.
+1. Download this entire repository to your machine.
+2. Open Chrome / Edge browser, go to the Extensions Management page: `chrome://extensions/`.
+3. Turn on **Developer mode** in the top right corner.
+4. Click the **Load unpacked** button.
+5. Select the **root directory** of this repository (absolutely do not select the `build` directory).
+6. Done! The extension is now ready to be safely used on Coursera.
