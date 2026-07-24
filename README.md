@@ -1,46 +1,52 @@
-# Coursera Skip Video (Clean Version)
+<div align="center">
+  <h1>🚀 Coursera Automation Tool (Clean Version)</h1>
+  <p><strong>A 100% safe, open-source browser extension to automate Coursera tasks. Skip videos, solve quizzes, and save time efficiently without any malicious code.</strong></p>
+</div>
+
+<p align="center">
+  <img src="https://img.shields.io/badge/version-1.0.0-blue.svg" alt="Version">
+  <img src="https://img.shields.io/badge/status-active-success.svg" alt="Status">
+  <img src="https://img.shields.io/badge/license-MIT-green.svg" alt="License">
+</p>
 
 ## 🌟 Introduction
 
-This is a **completely safe rewritten (Clean Rebuild)** version of the "Coursera Skip Video" (or Coursera Tool) extension.
+This is the **completely safe, clean-rebuilt version** of the popular Coursera Skip Video / Coursera Automation extensions.
 
-The original version of this extension was found to contain highly dangerous malicious code (specializing in account theft and remote control). Therefore, I have **rewritten the entire source code from scratch** in the root directory to provide automation features on Coursera in a **100% safe manner**. The new source code completely removes hidden code, does not collect cookies, and does not secretly send your data anywhere.
+Unlike other versions circulating online that may contain harmful code (cookie stealing, data exfiltration), this repository provides a **transparent, from-scratch rewrite**. There are absolutely no hidden scripts, no data collection, and no remote control behavior. This tool is built by the community, for the community, ensuring your privacy and security.
 
-## 🚀 Key Features (Clean Version)
+## ✨ Features
 
-- **Auto Complete (Bypass/Skip):** Automatically skip and mark Coursera readings and videos as completed.
-- **Auto Quiz:** Supports automatically solving quizzes.
-- **Safe & Transparent:** Open-source, transparent, and completely free of malware or data theft behaviors.
+- **✅ Auto Complete (Bypass/Skip):** Instantly skip and mark Coursera video lectures and reading materials as completed.
+- **✅ Auto Quiz Solver (AI Integration):** Automatically solves and completes quizzes with high accuracy using AI.
+- **✅ Clean & Fast:** Lightweight extension optimized for speed without bloating your browser.
+- **✅ 100% Secure & Open-Source:** Fully transparent code. No malware, no cookie tracking, completely safe for your personal Coursera account.
 
-## 📂 Repository Structure
+## 🚀 Coming Soon
 
-This project is divided into two distinct parts:
+We are actively developing new features to make your learning experience even smoother:
 
-### 1. Safe Part (Usable Source Code)
-All files located in the **root directory** (such as `manifest.json`, `background.js`, `content.js`, `popup.html`, etc.) are **clean source code rewritten by me**. You can safely use this directory to load into your browser.
+- **⏳ Multi-Language Support for Quizzes:** Better AI handling for quizzes in different languages.
+- **⏳ Auto-Enrollment:** Automatically enroll in courses within a specialization.
+- **⏳ Discussion Forum Auto-Post:** Automate peer-graded assignments and forum posts.
+- **⏳ Custom Shortcuts:** Keyboard shortcuts to toggle features on and off quickly.
 
-### 2. Security Analysis & Hacker's Malware (For Reference Only)
-- ⚠️ **`build/` directory**: Contains the hacker's original source code (obfuscated). This code contains malware and is kept **strictly for security research and evidentiary purposes**. **ABSOLUTELY DO NOT** load this directory into your browser!
-- `BUILD_FORENSIC_REPORT.md`: A detailed forensic report on data theft behaviors in the original version.
-- `*decode*.js` files (`real_decode.js`, `decoder.js`, `correct_decode.js`...): Scripts created by me to reverse engineer and deobfuscate the hacker's malware to write the report.
+## 🛠 Installation Guide
 
-## 🕵️‍♂️ About the Original Version (Malicious Version)
-
-As detailed in the `BUILD_FORENSIC_REPORT.md` report, the original extension contains highly sophisticated malware:
-- **Session Cookie Theft:** Automatically collects `CAUTH` and `CSRF3-Token`. Malicious actors can use this to hijack your Coursera account.
-- **Personal Information Theft:** Steals email and `userId`.
-- **Command and Control (C2) Network:** Continuously receives remote commands via the hacker's `metadata.json`.
-- **API Key Leakage:** Secretly sends the user's API Key (Gemini) to the attacker's server.
-
-> 💡 **Recommendation:** If you have ever used the hacker's original version from unverified sources, **log out of your Coursera account** immediately (to invalidate old cookies), change your password, and revoke any API Keys you have provided.
-
----
-
-## 🛠 Installation Guide (Clean Version)
-
-1. Download this entire repository to your machine.
-2. Open Chrome / Edge browser, go to the Extensions Management page: `chrome://extensions/`.
-3. Turn on **Developer mode** in the top right corner.
+1. Clone or download this repository as a `.zip` file and extract it.
+2. Open your Chromium-based browser (Chrome, Edge, Brave) and go to the Extensions page: `chrome://extensions/`.
+3. Enable **Developer mode** in the top right corner.
 4. Click the **Load unpacked** button.
-5. Select the **root directory** of this repository (absolutely do not select the `build` directory).
-6. Done! The extension is now ready to be safely used on Coursera.
+5. Select the **extracted folder** containing the extension files.
+6. 🎉 You're done! Open Coursera and let the tool do the heavy lifting safely.
+
+## 💡 SEO & Helping the Community
+
+If you find this tool helpful, you can help us reach more people by:
+- ⭐ **Starring** this repository on GitHub!
+- 🔗 **Sharing** the link on Reddit (`r/coursera`, `r/learnprogramming`), Discord, or student forums.
+- 🏷️ Adding relevant tags to your repository in the GitHub settings (e.g., `coursera`, `coursera-skip-tool`, `automation`, `browser-extension`, `quiz-solver`).
+
+## ⚖️ Disclaimer
+
+This tool is created for educational and research purposes to demonstrate browser automation capabilities. Use it responsibly and in accordance with Coursera's terms of service.
