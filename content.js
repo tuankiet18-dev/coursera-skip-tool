@@ -365,16 +365,16 @@ async function getAllCourseItems(courseSlug) {
 async function markAllItemsCompleted() {
   const context = getCourseContext();
   if (!context) {
-    chrome.runtime.sendMessage({ action: 'progressUpdate', message: 'Không tìm thấy khóa học. Hãy vào trang học.' });
+    chrome.runtime.sendMessage({ action: 'progressUpdate', status: 'error', code: 'NO_CONTEXT', message: 'Không tìm thấy bài học. Hãy vào trang bài học.' });
     return;
   }
 
   const { courseSlug } = context;
-  chrome.runtime.sendMessage({ action: 'progressUpdate', message: 'Đang tải danh sách bài học...' });
+  chrome.runtime.sendMessage({ action: 'progressUpdate', status: 'loading', code: 'FETCHING_CURRICULUM', message: 'Đang tải danh sách bài học...' });
 
   const material = await getAllCourseItems(courseSlug);
   if (!material || !material.linked || !material.linked['onDemandCourseMaterialItems.v2']) {
-    chrome.runtime.sendMessage({ action: 'progressUpdate', message: 'Không lấy được giáo trình khóa học.' });
+    chrome.runtime.sendMessage({ action: 'progressUpdate', status: 'error', code: 'FETCH_FAILED', message: 'Không lấy được giáo trình khóa học.' });
     return;
   }
 
@@ -386,24 +386,24 @@ async function markAllItemsCompleted() {
   let completed = 0;
   
   if (total === 0) {
-    chrome.runtime.sendMessage({ action: 'progressUpdate', message: 'Không tìm thấy video/bài đọc nào trong khóa học!' });
+    chrome.runtime.sendMessage({ action: 'progressUpdate', status: 'error', code: 'NO_ITEMS', message: 'Không tìm thấy video hoặc bài đọc nào!' });
     return;
   }
 
   const courseId = material.elements?.[0]?.id;
   if (!courseId) {
-    chrome.runtime.sendMessage({ action: 'progressUpdate', message: 'Lỗi: Không lấy được courseId.' });
+    chrome.runtime.sendMessage({ action: 'progressUpdate', status: 'error', code: 'NO_COURSE_ID', message: 'Không lấy được ID khóa học.' });
     return;
   }
 
   const userId = await getUserId(courseId);
   if (!userId) {
-    chrome.runtime.sendMessage({ action: 'progressUpdate', message: 'Lỗi: Không lấy được userId.' });
+    chrome.runtime.sendMessage({ action: 'progressUpdate', status: 'error', code: 'NO_USER_ID', message: 'Không lấy được User ID. Vui lòng đăng nhập Coursera.' });
     return;
   }
 
   const batchSize = 5;
-  chrome.runtime.sendMessage({ action: 'progressUpdate', message: `Bắt đầu xử lý ${total} bài học...` });
+  chrome.runtime.sendMessage({ action: 'progressUpdate', status: 'starting', current: 0, total, message: `Bắt đầu xử lý ${total} bài học...` });
 
   for (let i = 0; i < total; i += batchSize) {
     const batch = items.slice(i, i + batchSize);
@@ -417,18 +417,20 @@ async function markAllItemsCompleted() {
            await markSupplementCompleted(userId, courseId, courseSlug, item.id);
         }
       } catch (e) {
-        console.log('[CourseraSkip] Lỗi item', item.id, e);
+        console.log('[CourseraSkip] Item error', item.id, e);
       }
     }));
     
-    completed += batch.length;
-    chrome.runtime.sendMessage({ action: 'progressUpdate', message: `Đang xử lý: ${Math.min(completed, total)} / ${total} bài...` });
+    completed = Math.min(completed + batch.length, total);
+    chrome.runtime.sendMessage({ action: 'progressUpdate', status: 'progress', current: completed, total, message: `Đang xử lý: ${completed} / ${total}` });
     
-    // Tạm nghỉ 2s giữa các batch để tránh bị server Coursera rate limit hoặc xử lý không kịp
-    await sleep(2000);
+    // Tạm nghỉ 2s giữa các batch để tránh bị server Coursera rate limit
+    if (completed < total) {
+      await sleep(2000);
+    }
   }
 
-  chrome.runtime.sendMessage({ action: 'progressUpdate', message: `✅ Hoàn thành toàn bộ ${total} bài học! Vui lòng F5 trang.` });
+  chrome.runtime.sendMessage({ action: 'progressUpdate', status: 'completed', current: total, total, message: `✅ Hoàn thành toàn bộ ${total} bài học!` });
 }
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {

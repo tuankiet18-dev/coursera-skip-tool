@@ -1,7 +1,7 @@
 {
-  "name": "Coursera Skip Video",
-  "description": "Tự động đánh dấu hoàn thành (skip) video và bài đọc trên Coursera.",
-  "version": "1.0.0",
+  "name": "Coursera Skip Video & Reading",
+  "description": "Fast, safe, and open-source extension to automate and complete Coursera lectures & readings.",
+  "version": "1.1.0",
   "manifest_version": 3,
   "icons": {
     "48": "icon.png",
