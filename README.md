@@ -5,8 +5,13 @@
 
 <p align="center">
   <img src="https://img.shields.io/badge/version-1.1.0-blue.svg" alt="Version">
+  <img src="https://img.shields.io/badge/Chrome_Web_Store-Pending_Review-orange.svg" alt="Chrome Web Store">
   <img src="https://img.shields.io/badge/status-active-success.svg" alt="Status">
   <img src="https://img.shields.io/badge/license-MIT-green.svg" alt="License">
+</p>
+
+<p align="center">
+  <img src="./screenshot-1280x800.png" alt="Coursera Automation Tool Preview" width="800">
 </p>
 
 ## 🌟 Introduction
