@@ -11,7 +11,10 @@
 </p>
 
 <p align="center">
-  <img src="./screenshot-1280x800.png" alt="Coursera Automation Tool Preview" width="800">
+  <img src="./screenshot-main.png" alt="Coursera Automation Active Lesson" width="750">
+</p>
+<p align="center">
+  <em>Live detection on active Coursera lecture with 1-click completion</em>
 </p>
 
 ## 🌟 Introduction
