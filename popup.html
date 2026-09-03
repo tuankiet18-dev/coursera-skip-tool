@@ -3,56 +3,51 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Coursera Automation</title>
+  <title>Coursera Skip</title>
   <style>
-    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
 
-    *, *::before, *::after { box-sizing: border-box; }
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
     :root {
-      --bg: #0b0f19;
-      --bg-card: rgba(22, 30, 49, 0.75);
-      --bg-card-hover: rgba(30, 41, 68, 0.85);
+      --bg: #0f172a;
+      --card-bg: rgba(30, 41, 59, 0.7);
+      --card-border: rgba(255, 255, 255, 0.08);
       
       --primary: #6366f1;
       --primary-hover: #4f46e5;
       --grad-primary: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
       --grad-magic: linear-gradient(135deg, #10b981 0%, #059669 100%);
-      --grad-guide: linear-gradient(135deg, rgba(99, 102, 241, 0.15), rgba(139, 92, 246, 0.05));
       
       --text: #f8fafc;
-      --text-secondary: #94a3b8;
-      --text-muted: #64748b;
-      --border: rgba(255, 255, 255, 0.08);
-      --border-focus: rgba(99, 102, 241, 0.4);
+      --text-muted: #94a3b8;
+      --text-subtle: #64748b;
       
       --success: #10b981;
       --success-bg: rgba(16, 185, 129, 0.12);
       --error: #f87171;
       --error-bg: rgba(239, 68, 68, 0.12);
+      --amber: #facc15;
     }
 
     body {
-      width: 360px;
-      margin: 0;
+      width: 320px;
       font-family: 'Inter', system-ui, -apple-system, sans-serif;
       font-size: 13px;
       color: var(--text);
       background: var(--bg);
       background-image: 
-        radial-gradient(circle at 10% 20%, rgba(99, 102, 241, 0.12) 0%, transparent 40%),
-        radial-gradient(circle at 90% 80%, rgba(16, 185, 129, 0.08) 0%, transparent 40%);
-      min-height: 360px;
-      overflow-x: hidden;
+        radial-gradient(circle at 10% 10%, rgba(99, 102, 241, 0.15) 0%, transparent 40%),
+        radial-gradient(circle at 90% 90%, rgba(16, 185, 129, 0.1) 0%, transparent 40%);
       user-select: none;
+      overflow: hidden;
     }
 
     .shell {
-      padding: 18px;
+      padding: 16px;
       display: flex;
       flex-direction: column;
-      gap: 14px;
-      position: relative;
+      gap: 12px;
     }
 
     /* Header */
@@ -60,61 +55,51 @@
       display: flex;
       align-items: center;
       justify-content: space-between;
-      padding-bottom: 2px;
     }
 
     .brand {
       display: flex;
       align-items: center;
-      gap: 10px;
+      gap: 8px;
     }
 
-    .logo-container {
-      width: 34px;
-      height: 34px;
-      border-radius: 10px;
+    .logo-icon {
+      width: 28px;
+      height: 28px;
+      border-radius: 8px;
       background: var(--grad-primary);
       display: flex;
       align-items: center;
       justify-content: center;
-      box-shadow: 0 4px 12px rgba(99, 102, 241, 0.35);
+      box-shadow: 0 2px 8px rgba(99, 102, 241, 0.35);
       flex-shrink: 0;
     }
 
-    .logo-container svg {
-      width: 18px;
-      height: 18px;
+    .logo-icon svg {
+      width: 16px;
+      height: 16px;
       fill: #fff;
     }
 
-    .header-text h1 {
-      margin: 0;
-      font-size: 15px;
+    .app-title {
+      font-size: 14px;
       font-weight: 700;
       letter-spacing: -0.01em;
       color: #fff;
     }
 
-    .header-text p {
-      margin: 2px 0 0;
-      font-size: 11px;
-      color: var(--text-secondary);
-      font-weight: 500;
-    }
-
-    .header-actions {
+    .header-controls {
       display: flex;
       align-items: center;
       gap: 6px;
     }
 
-    /* Language Switcher Pill */
-    .lang-btn {
+    .lang-pill {
       background: rgba(255, 255, 255, 0.06);
-      border: 1px solid var(--border);
-      color: var(--text-secondary);
-      border-radius: 20px;
-      padding: 4px 8px;
+      border: 1px solid var(--card-border);
+      color: var(--text-muted);
+      border-radius: 14px;
+      padding: 3px 8px;
       font-size: 11px;
       font-weight: 600;
       cursor: pointer;
@@ -124,47 +109,19 @@
       transition: all 0.2s ease;
     }
 
-    .lang-btn:hover {
+    .lang-pill:hover {
       background: rgba(255, 255, 255, 0.12);
       color: #fff;
-      border-color: var(--border-focus);
     }
 
-    .lang-btn .active-lang {
+    .lang-pill .active-text {
       color: #818cf8;
       font-weight: 700;
     }
 
-    .icon-btn {
-      background: rgba(255, 255, 255, 0.06);
-      border: 1px solid var(--border);
-      color: var(--text-secondary);
-      width: 28px;
-      height: 28px;
-      border-radius: 8px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      cursor: pointer;
-      transition: all 0.2s ease;
-      padding: 0;
-    }
-
-    .icon-btn:hover {
-      background: rgba(255, 255, 255, 0.12);
-      color: #fff;
-      border-color: var(--border-focus);
-    }
-
-    .icon-btn svg {
-      width: 14px;
-      height: 14px;
-      fill: currentColor;
-    }
-
     /* Alerts */
     .alert {
-      padding: 10px 12px;
+      padding: 9px 12px;
       border-radius: 8px;
       font-size: 12px;
       font-weight: 500;
@@ -175,13 +132,11 @@
 
     /* Active Lesson Card */
     .card {
-      background: var(--bg-card);
-      backdrop-filter: blur(12px);
-      -webkit-backdrop-filter: blur(12px);
-      border: 1px solid var(--border);
+      background: var(--card-bg);
+      backdrop-filter: blur(8px);
+      border: 1px solid var(--card-border);
       border-radius: 12px;
-      padding: 14px;
-      transition: all 0.2s ease;
+      padding: 12px;
     }
 
     .status-badge {
@@ -190,10 +145,10 @@
       gap: 6px;
       font-size: 10px;
       font-weight: 700;
-      letter-spacing: 0.06em;
       text-transform: uppercase;
+      letter-spacing: 0.05em;
       color: #10b981;
-      margin-bottom: 10px;
+      margin-bottom: 8px;
     }
 
     .pulse-dot {
@@ -201,7 +156,7 @@
       height: 6px;
       border-radius: 50%;
       background: #10b981;
-      box-shadow: 0 0 8px #10b981;
+      box-shadow: 0 0 6px #10b981;
       animation: pulse 1.8s infinite;
     }
 
@@ -209,7 +164,7 @@
       font-size: 13px;
       font-weight: 600;
       color: #f1f5f9;
-      margin: 0 0 10px;
+      margin-bottom: 8px;
       line-height: 1.35;
       overflow: hidden;
       text-overflow: ellipsis;
@@ -225,15 +180,15 @@
     }
 
     .meta-label {
-      color: var(--text-muted);
+      color: var(--text-subtle);
       font-size: 11px;
     }
 
     .type-pill {
       display: inline-flex;
       align-items: center;
-      gap: 5px;
-      padding: 3px 8px;
+      gap: 4px;
+      padding: 2px 7px;
       border-radius: 6px;
       font-size: 11px;
       font-weight: 600;
@@ -242,79 +197,42 @@
       border: 1px solid rgba(99, 102, 241, 0.25);
     }
 
-    /* Onboarding / Empty State Card */
-    .guide-card {
-      background: var(--grad-guide);
-      border: 1px solid rgba(99, 102, 241, 0.2);
-      border-radius: 14px;
-      padding: 16px 14px;
-      text-align: center;
-    }
-
-    .guide-icon-box {
-      width: 42px;
-      height: 42px;
+    /* Clean Empty / Waiting State */
+    .empty-card {
+      background: var(--card-bg);
+      border: 1px solid var(--card-border);
       border-radius: 12px;
-      background: rgba(99, 102, 241, 0.15);
-      border: 1px solid rgba(99, 102, 241, 0.3);
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      margin: 0 auto 10px;
-      color: #818cf8;
-    }
-
-    .guide-icon-box svg {
-      width: 22px;
-      height: 22px;
-      fill: currentColor;
-    }
-
-    .guide-title {
-      font-size: 14px;
-      font-weight: 700;
-      color: #fff;
-      margin: 0 0 4px;
-    }
-
-    .guide-subtitle {
-      font-size: 11px;
-      color: var(--text-secondary);
-      margin: 0 0 12px;
-    }
-
-    .steps-list {
-      text-align: left;
+      padding: 22px 16px;
+      text-align: center;
       display: flex;
       flex-direction: column;
-      gap: 8px;
-      margin-bottom: 12px;
-    }
-
-    .step-item {
-      display: flex;
       align-items: center;
       gap: 10px;
-      background: rgba(0, 0, 0, 0.25);
-      padding: 8px 10px;
-      border-radius: 8px;
-      border: 1px solid rgba(255, 255, 255, 0.04);
-      font-size: 12px;
-      color: #e2e8f0;
     }
 
-    .step-num {
-      width: 20px;
-      height: 20px;
-      border-radius: 6px;
-      background: rgba(99, 102, 241, 0.25);
-      color: #a5b4fc;
-      font-weight: 700;
-      font-size: 11px;
+    .empty-icon {
+      width: 40px;
+      height: 40px;
+      border-radius: 12px;
+      background: rgba(99, 102, 241, 0.12);
       display: flex;
       align-items: center;
       justify-content: center;
-      flex-shrink: 0;
+      color: #818cf8;
+      font-size: 20px;
+    }
+
+    .empty-title {
+      font-size: 13px;
+      font-weight: 700;
+      color: #fff;
+    }
+
+    .empty-desc {
+      font-size: 11px;
+      color: var(--text-muted);
+      line-height: 1.45;
+      max-width: 250px;
     }
 
     /* Buttons */
@@ -327,19 +245,18 @@
     .btn {
       width: 100%;
       border: none;
-      padding: 11px 14px;
-      border-radius: 10px;
+      padding: 10px 12px;
+      border-radius: 9px;
       font-family: inherit;
-      font-size: 13px;
+      font-size: 12px;
       font-weight: 600;
       color: #fff;
       cursor: pointer;
       display: flex;
       align-items: center;
       justify-content: center;
-      gap: 8px;
-      transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
-      position: relative;
+      gap: 6px;
+      transition: all 0.2s ease;
     }
 
     .btn:disabled {
@@ -350,44 +267,37 @@
 
     .btn-primary {
       background: var(--grad-primary);
-      box-shadow: 0 4px 14px rgba(99, 102, 241, 0.3);
+      box-shadow: 0 2px 10px rgba(99, 102, 241, 0.25);
     }
     .btn-primary:hover:not(:disabled) {
       transform: translateY(-1px);
-      box-shadow: 0 6px 18px rgba(99, 102, 241, 0.45);
+      box-shadow: 0 4px 14px rgba(99, 102, 241, 0.4);
     }
 
     .btn-magic {
       background: var(--grad-magic);
-      box-shadow: 0 4px 14px rgba(16, 185, 129, 0.25);
+      box-shadow: 0 2px 10px rgba(16, 185, 129, 0.2);
     }
     .btn-magic:hover:not(:disabled) {
       transform: translateY(-1px);
-      box-shadow: 0 6px 18px rgba(16, 185, 129, 0.4);
+      box-shadow: 0 4px 14px rgba(16, 185, 129, 0.35);
     }
 
     .btn-outline {
       background: rgba(255, 255, 255, 0.05);
-      border: 1px solid var(--border);
-      color: var(--text-secondary);
+      border: 1px solid var(--card-border);
+      color: var(--text);
       font-size: 12px;
-      padding: 9px 12px;
+      margin-top: 4px;
     }
     .btn-outline:hover:not(:disabled) {
-      background: rgba(255, 255, 255, 0.09);
-      color: #fff;
-    }
-
-    .btn svg {
-      width: 16px;
-      height: 16px;
-      fill: currentColor;
+      background: rgba(255, 255, 255, 0.1);
     }
 
     .spinner {
       display: none;
-      width: 15px;
-      height: 15px;
+      width: 14px;
+      height: 14px;
       border: 2px solid rgba(255,255,255,0.3);
       border-radius: 50%;
       border-top-color: #fff;
@@ -397,138 +307,78 @@
     .btn.loading .spinner { display: block; }
     .btn.loading .btn-icon { display: none; }
 
-    /* Trust Banner */
-    .trust-banner {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      font-size: 11px;
-      background: rgba(16, 185, 129, 0.08);
-      border: 1px solid rgba(16, 185, 129, 0.22);
-      border-radius: 8px;
-      padding: 6px 10px;
-      color: #34d399;
-      font-weight: 500;
-    }
-    .trust-left {
-      display: flex;
-      align-items: center;
-      gap: 6px;
-    }
-    .trust-left svg {
-      width: 13px;
-      height: 13px;
-      fill: #10b981;
-      flex-shrink: 0;
-    }
-    .audit-link {
-      color: #818cf8;
-      text-decoration: none;
-      font-weight: 600;
-      font-size: 10px;
-      padding: 2px 6px;
-      border-radius: 4px;
-      background: rgba(99, 102, 241, 0.12);
-      border: 1px solid rgba(99, 102, 241, 0.25);
-      transition: all 0.2s ease;
-    }
-    .audit-link:hover {
-      background: rgba(99, 102, 241, 0.25);
-      color: #fff;
-    }
-
-    /* Rate 5-Star Header Button */
-    .rate-btn {
-      background: rgba(234, 179, 8, 0.12);
-      border: 1px solid rgba(234, 179, 8, 0.35);
-      color: #facc15;
-      border-radius: 20px;
-      padding: 4px 8px;
-      font-size: 11px;
-      font-weight: 700;
-      cursor: pointer;
-      display: flex;
-      align-items: center;
-      gap: 4px;
-      transition: all 0.2s ease;
-    }
-    .rate-btn:hover {
-      background: rgba(234, 179, 8, 0.22);
-      box-shadow: 0 0 10px rgba(234, 179, 8, 0.35);
-      color: #fef08a;
-    }
-
-    /* Smart Rating Prompt Card */
-    .rating-card {
-      background: linear-gradient(135deg, rgba(234, 179, 8, 0.12) 0%, rgba(99, 102, 241, 0.12) 100%);
-      border: 1px solid rgba(234, 179, 8, 0.3);
-      border-radius: 12px;
-      padding: 12px 14px;
+    /* Smart Rating Toast/Card */
+    .rating-toast {
+      background: rgba(234, 179, 8, 0.08);
+      border: 1px solid rgba(234, 179, 8, 0.25);
+      border-radius: 10px;
+      padding: 10px 12px;
       animation: fadeIn 0.3s ease;
       display: flex;
       flex-direction: column;
-      gap: 8px;
+      gap: 6px;
     }
-    .rating-card-header {
+
+    .rating-top {
       display: flex;
       align-items: center;
       justify-content: space-between;
     }
-    .rating-card-title {
-      font-size: 12px;
+
+    .rating-label {
+      font-size: 11px;
       font-weight: 700;
-      color: #fef08a;
+      color: #fde047;
       display: flex;
       align-items: center;
-      gap: 5px;
+      gap: 4px;
     }
-    .close-rating-btn {
+
+    .close-btn {
       background: transparent;
       border: none;
-      color: var(--text-muted);
+      color: var(--text-subtle);
       cursor: pointer;
       font-size: 12px;
       padding: 2px 4px;
-      border-radius: 4px;
       line-height: 1;
     }
-    .close-rating-btn:hover { color: #fff; }
-    .rating-card-desc {
-      margin: 0;
+    .close-btn:hover { color: #fff; }
+
+    .rating-msg {
       font-size: 11px;
       color: #cbd5e1;
-      line-height: 1.4;
+      line-height: 1.35;
     }
-    .btn-rate-action {
+
+    .btn-rate {
       background: linear-gradient(135deg, #eab308 0%, #ca8a04 100%);
       color: #0b0f19;
       font-weight: 700;
-      padding: 8px 12px;
-      border-radius: 8px;
+      padding: 6px 10px;
+      border-radius: 6px;
       font-size: 11px;
-      box-shadow: 0 2px 8px rgba(234, 179, 8, 0.3);
-      width: 100%;
       border: none;
       cursor: pointer;
+      text-align: center;
+      transition: all 0.2s ease;
       display: flex;
       align-items: center;
       justify-content: center;
-      gap: 6px;
-      transition: all 0.2s ease;
+      gap: 4px;
     }
-    .btn-rate-action:hover {
-      transform: translateY(-1px);
-      box-shadow: 0 4px 12px rgba(234, 179, 8, 0.45);
+    .btn-rate:hover {
+      background: #facc15;
       color: #000;
     }
 
     /* Progress UI */
     .progress-container {
       display: none;
-      background: var(--bg-card);
-      border: 1px solid var(--border);
-      border-radius: 10px;
-      padding: 12px;
+      background: var(--card-bg);
+      border: 1px solid var(--card-border);
+      border-radius: 8px;
+      padding: 10px;
       animation: fadeIn 0.3s ease;
     }
 
@@ -536,14 +386,14 @@
       font-size: 11px;
       color: #38bdf8;
       font-weight: 600;
-      margin-bottom: 8px;
+      margin-bottom: 6px;
       display: flex;
       justify-content: space-between;
     }
 
     .progress-bar-bg {
       width: 100%;
-      height: 6px;
+      height: 5px;
       background: rgba(0,0,0,0.3);
       border-radius: 3px;
       overflow: hidden;
@@ -560,31 +410,21 @@
     .footer {
       text-align: center;
       font-size: 10px;
-      color: var(--text-muted);
-      margin-top: 2px;
-      display: flex;
-      flex-direction: column;
-      gap: 4px;
-    }
-    .footer-links {
+      color: var(--text-subtle);
       display: flex;
       align-items: center;
       justify-content: center;
       gap: 8px;
-      font-size: 11px;
+      padding-top: 2px;
     }
-    .footer-link {
-      color: var(--text-secondary);
+
+    .footer a {
+      color: var(--text-muted);
       text-decoration: none;
       transition: color 0.2s ease;
     }
-    .footer-link:hover {
-      color: #38bdf8;
-    }
-    .footer-link.star {
-      color: #facc15;
-      font-weight: 600;
-    }
+    .footer a:hover { color: #38bdf8; }
+    .footer a.star { color: #facc15; }
 
     @keyframes spin { to { transform: rotate(360deg); } }
     @keyframes pulse {
@@ -600,56 +440,25 @@
 <body>
   <div class="shell">
     
-    <!-- Top Header -->
+    <!-- Header -->
     <div class="header">
       <div class="brand">
-        <div class="logo-container">
+        <div class="logo-icon">
           <svg viewBox="0 0 24 24"><path d="M12 3L1 9l4 2.18v6L12 21l7-3.82v-6l2-1.09V17h2V9L12 3zm6.82 6L12 12.72 5.18 9 12 5.28 18.82 9zM17 15.99l-5 2.73-5-2.73v-3.72L12 15l5-2.73v3.72z"/></svg>
         </div>
-        <div class="header-text">
-          <h1 id="txt-app-title">Coursera Skip</h1>
-          <p id="txt-app-subtitle">Fast & Clean Automation</p>
-        </div>
+        <div class="app-title">Coursera Skip</div>
       </div>
 
-      <div class="header-actions">
-        <button id="btn-header-rate" class="rate-btn" title="Rate 5 Stars on Chrome Web Store">
-          <span>⭐</span>
-          <span id="txt-rate-header">5★</span>
-        </button>
-        <button id="btn-lang-toggle" class="lang-btn" title="Switch Language / Đổi ngôn ngữ">
+      <div class="header-controls">
+        <button id="btn-lang-toggle" class="lang-pill" title="Switch Language / Đổi ngôn ngữ">
           <span>🌐</span>
-          <span id="txt-lang-badge">EN</span>
-        </button>
-        <button id="btn-header-refresh" class="icon-btn" title="Refresh Detection">
-          <svg viewBox="0 0 24 24"><path d="M17.65 6.35C16.2 4.9 14.21 4 12 4c-4.42 0-7.99 3.58-7.99 8s3.57 8 7.99 8c3.73 0 6.84-2.55 7.73-6h-2.08c-.82 2.33-3.04 4-5.65 4-3.31 0-6-2.69-6-6s2.69-6 6-6c1.66 0 3.14.69 4.22 1.78L13 11h7V4l-2.35 2.35z"/></svg>
+          <span id="txt-lang-badge" class="active-text">VI</span>
         </button>
       </div>
     </div>
 
-    <!-- Trust & Security Banner -->
-    <div class="trust-banner">
-      <div class="trust-left">
-        <svg viewBox="0 0 24 24"><path d="M12 1L3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-4zm-2 16l-4-4 1.41-1.41L10 14.17l6.59-6.59L18 9l-8 8z"/></svg>
-        <span id="txt-trust-text">100% Safe • No Cookies Stored</span>
-      </div>
-      <a href="https://github.com/tuankiet18-dev/coursera-skip-tool" target="_blank" class="audit-link" id="txt-audit-link">GitHub ↗</a>
-    </div>
-
-    <!-- Alert / Toast Banner -->
+    <!-- Alert Banner -->
     <div id="result-alert" class="alert"></div>
-
-    <!-- Smart Rating Invitation Card -->
-    <div id="rating-card" class="rating-card" style="display: none;">
-      <div class="rating-card-header">
-        <span class="rating-card-title" id="txt-rating-title">🎉 Enjoying the tool?</span>
-        <button id="btn-close-rating" class="close-rating-btn" title="Dismiss">✕</button>
-      </div>
-      <p class="rating-card-desc" id="txt-rating-desc">If Coursera Skip saved your time, a quick 5-star review on the Chrome Web Store helps us immensely!</p>
-      <button id="btn-rate-store" class="btn-rate-action">
-        <span id="txt-btn-rate-store">⭐ Rate 5 Stars on Store</span>
-      </button>
-    </div>
 
     <!-- State 1: Active Lesson Detected -->
     <div id="page-status" class="card" style="display: none;">
@@ -667,44 +476,26 @@
       </div>
     </div>
 
-    <!-- State 2: Friendly Onboarding / Not on Lesson Page -->
-    <div id="empty-msg" class="guide-card" style="display: none;">
-      <div class="guide-icon-box">
-        <svg viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 17.93c-3.95-.49-7-3.85-7-7.93 0-.62.08-1.21.21-1.79L9 15v1c0 1.1.9 2 2 2v1.93zm6.9-2.54c-.26-.81-1-1.39-1.9-1.39h-1v-3c0-.55-.45-1-1-1H8v-2h2c.55 0 1-.45 1-1V7h2c1.1 0 2-.9 2-2v-.41c2.93 1.19 5 4.06 5 7.41 0 2.08-.8 3.97-2.1 5.39z"/></svg>
-      </div>
-      <div class="guide-title" id="txt-guide-title">Ready to Automate</div>
-      <div class="guide-subtitle" id="txt-guide-sub">Follow 3 simple steps to start:</div>
-      
-      <div class="steps-list">
-        <div class="step-item">
-          <div class="step-num">1</div>
-          <span id="txt-step-1">Enroll in your Coursera course</span>
-        </div>
-        <div class="step-item">
-          <div class="step-num">2</div>
-          <span id="txt-step-2">Open any Video or Reading lesson</span>
-        </div>
-        <div class="step-item">
-          <div class="step-num">3</div>
-          <span id="txt-step-3">Click Complete in this extension</span>
-        </div>
-      </div>
-
+    <!-- State 2: Clean & Friendly Empty State -->
+    <div id="empty-msg" class="empty-card" style="display: none;">
+      <div class="empty-icon">🎓</div>
+      <div class="empty-title" id="txt-empty-title">Ready to Automate</div>
+      <div class="empty-desc" id="txt-empty-desc">Open any video or reading lesson on Coursera to start.</div>
       <button id="btn-guide-action" class="btn btn-outline">
-        <span id="txt-guide-action-btn">🔄 Refresh Detection</span>
+        <span id="txt-guide-action-btn">🚀 Open Coursera</span>
       </button>
     </div>
 
     <!-- Action Buttons -->
     <div class="actions" id="action-buttons" style="display: none;">
       <button id="btn-skip-current" class="btn btn-primary">
-        <svg class="btn-icon" viewBox="0 0 24 24"><path d="M4 18l8.5-6L4 6v12zm9-12v12l8.5-6L13 6z"/></svg>
+        <span class="btn-icon">⚡</span>
         <div class="spinner"></div>
         <span class="btn-text" id="txt-btn-skip-current">Complete Current Lesson</span>
       </button>
 
       <button id="btn-skip-all" class="btn btn-magic">
-        <svg class="btn-icon" viewBox="0 0 24 24"><path d="M19.36 10.04C18.67 6.59 15.64 4 12 4 9.11 4 6.6 5.64 5.36 8.04A5.994 5.994 0 0 0 0 14c0 3.31 2.69 6 6 6h13c2.76 0 5-2.24 5-5 0-2.64-2.05-4.78-4.64-4.96zM13 13v4h-2v-4H8l4-4 4 4h-3z"/></svg>
+        <span class="btn-icon">🚀</span>
         <div class="spinner"></div>
         <span class="btn-text" id="txt-btn-skip-all">Complete Entire Course</span>
       </button>
@@ -721,16 +512,25 @@
       </div>
     </div>
 
-    <!-- Footer -->
-    <div class="footer">
-      <div class="footer-links">
-        <a id="lnk-footer-rate" href="#" class="footer-link star">⭐ Rate 5★</a>
-        <span>•</span>
-        <a href="https://github.com/tuankiet18-dev/coursera-skip-tool" target="_blank" class="footer-link">🐙 GitHub</a>
-        <span>•</span>
-        <a href="https://github.com/tuankiet18-dev/coursera-skip-tool/blob/main/PRIVACY.md" target="_blank" class="footer-link">Privacy</a>
+    <!-- Gentle Rating Prompt (Only shown when lesson finishes successfully) -->
+    <div id="rating-toast" class="rating-toast" style="display: none;">
+      <div class="rating-top">
+        <span class="rating-label" id="txt-rating-label">🎉 Completed!</span>
+        <button id="btn-close-rating" class="close-btn" title="Close">✕</button>
       </div>
-      <div id="txt-footer-note">Requires active course enrollment. Safe & Open-Source.</div>
+      <div class="rating-msg" id="txt-rating-msg">Saved your time? Give us 5 stars on Chrome Web Store!</div>
+      <button id="btn-rate-store" class="btn-rate">
+        <span>⭐ Rate 5 Stars</span>
+      </button>
+    </div>
+
+    <!-- Minimal Footer -->
+    <div class="footer">
+      <span>Open Source</span>
+      <span>•</span>
+      <a href="https://github.com/tuankiet18-dev/coursera-skip-tool" target="_blank">GitHub</a>
+      <span>•</span>
+      <a id="lnk-footer-rate" href="#" class="star">⭐ Rate 5★</a>
     </div>
 
   </div>

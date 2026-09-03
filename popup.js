@@ -1,68 +1,51 @@
 const STORE_REVIEW_URL = 'https://chromewebstore.google.com/detail/coursera-skip-video-read/jjbgneddmjkolgmpamecbhfgjgdiajlf/reviews';
-const GITHUB_URL = 'https://github.com/tuankiet18-dev/coursera-skip-tool';
 
 const I18N = {
   en: {
-    appTitle: 'Coursera Skip',
-    appSubtitle: 'Fast & Clean Automation',
     langBadge: 'EN',
-    trustText: '100% Safe • No Cookies Stored',
-    auditLink: 'GitHub ↗',
-    ratingTitle: '🎉 Enjoying the tool?',
-    ratingDesc: 'If Coursera Skip saved your valuable time, a quick 5-star review on the Chrome Web Store helps us immensely!',
-    btnRateStore: '⭐ Rate 5 Stars on Store',
     detectedLabel: 'Lesson Detected',
-    lessonTypeLabel: 'Lesson Type',
-    guideTitle: 'Ready to Automate',
-    guideSub: 'Follow 3 simple steps to start:',
-    step1: 'Enroll in your Coursera course',
-    step2: 'Open any Video or Reading lesson',
-    step3: 'Click Complete in this extension',
+    lessonTypeLabel: 'Type',
+    emptyTitle: 'Ready to Automate',
+    emptyDesc: 'Open any video or reading lesson on Coursera to start.',
     guideActionBtnTab: '🔄 Refresh Detection',
     guideActionBtnOpen: '🚀 Open Coursera',
-    btnSkipCurrent: 'Complete Current Lesson',
+    btnSkipCurrent: 'Complete This Lesson',
     btnSkipAll: 'Complete Entire Course',
-    footerNote: 'Requires active course enrollment. Safe & Open-Source.',
-    processingCurrent: 'Completing lesson...',
+    processingCurrent: 'Completing...',
     successCurrent: '✅ Lesson completed! Reloading...',
-    startingBulk: 'Starting bulk automation...',
-    fetchingCurriculum: 'Loading course curriculum...',
-    processingBulk: 'Processing: {current} / {total} lessons',
-    completedBulk: '✅ All {total} lessons completed! Reloading...',
+    startingBulk: 'Starting automation...',
+    fetchingCurriculum: 'Loading course lessons...',
+    processingBulk: 'Processing: {current} / {total}',
+    completedBulk: '✅ Done! All {total} lessons completed.',
+    ratingLabel: '🎉 Completed!',
+    ratingMsg: 'Saved your time? Give us 5 stars on Chrome Web Store!',
+    btnRate: '⭐ Rate 5 Stars',
     notOnLesson: 'Please open a Coursera lesson page first.',
-    notEnrolled: 'Permission denied (403/401). Please make sure you are enrolled in the course.',
-    unknownError: 'An error occurred. Please check Console (F12).'
+    notEnrolled: 'Permission denied. Make sure you are enrolled in the course.',
+    unknownError: 'An error occurred. Check Console (F12).'
   },
   vi: {
-    appTitle: 'Coursera Skip',
-    appSubtitle: 'Tự động hóa học tập nhanh gọn',
     langBadge: 'VI',
-    trustText: '100% An toàn • Không lưu Cookie',
-    auditLink: 'GitHub ↗',
-    ratingTitle: '🎉 Tiện ích giúp ích cho bạn?',
-    ratingDesc: 'Nếu Coursera Skip giúp bạn tiết kiệm thời gian học tập, hãy dành 10 giây tặng tác giả 5 sao trên Cửa hàng Chrome nhé!',
-    btnRateStore: '⭐ Đánh giá 5 sao trên Cửa hàng',
     detectedLabel: 'Đã nhận diện bài học',
-    lessonTypeLabel: 'Loại bài học',
-    guideTitle: 'Sẵn sàng tự động hóa',
-    guideSub: 'Làm theo 3 bước đơn giản để bắt đầu:',
-    step1: 'Đăng ký (Enroll) vào khóa học',
-    step2: 'Mở 1 bài Video hoặc Reading bất kỳ',
-    step3: 'Mở popup này và bấm Hoàn thành',
-    guideActionBtnTab: '🔄 Làm mới nhận diện',
+    lessonTypeLabel: 'Loại bài',
+    emptyTitle: 'Sẵn sàng tự động hóa',
+    emptyDesc: 'Vui lòng mở một bài Video hoặc Bài đọc trên Coursera để bắt đầu.',
+    guideActionBtnTab: '🔄 Nhận diện lại',
     guideActionBtnOpen: '🚀 Mở Coursera',
     btnSkipCurrent: 'Hoàn thành bài hiện tại',
     btnSkipAll: 'Hoàn thành toàn bộ khóa học',
-    footerNote: 'Lưu ý: Chỉ áp dụng khi bạn đã ghi danh (Enroll) khóa học.',
     processingCurrent: 'Đang xử lý...',
     successCurrent: '✅ Đã hoàn thành! Đang tải lại trang...',
-    startingBulk: 'Đang khởi động tiến trình...',
+    startingBulk: 'Đang bắt đầu...',
     fetchingCurriculum: 'Đang tải danh sách bài học...',
-    processingBulk: 'Đang xử lý: {current} / {total} bài...',
-    completedBulk: '✅ Hoàn thành toàn bộ {total} bài học! Đang tải lại...',
+    processingBulk: 'Đang xử lý: {current} / {total}',
+    completedBulk: '✅ Hoàn thành toàn bộ {total} bài học!',
+    ratingLabel: '🎉 Đã xong bài học!',
+    ratingMsg: 'Tiết kiệm thời gian cho bạn? Tặng tác giả 5 sao trên Cửa hàng nhé!',
+    btnRate: '⭐ Đánh giá 5 sao',
     notOnLesson: 'Vui lòng mở trang bài học Coursera trước.',
-    notEnrolled: 'Lỗi không có quyền (403/401). Hãy chắc chắn bạn đã đăng ký khóa học.',
-    unknownError: 'Đã xảy ra lỗi không xác định. Kiểm tra Console (F12).'
+    notEnrolled: 'Không có quyền. Hãy chắc chắn bạn đã đăng ký khóa học.',
+    unknownError: 'Đã xảy ra lỗi. Kiểm tra Console (F12).'
   }
 };
 
@@ -94,24 +77,14 @@ function formatCourseSlug(slug) {
 }
 
 function updateUILanguage() {
-  document.getElementById('txt-app-title').textContent = t('appTitle');
-  document.getElementById('txt-app-subtitle').textContent = t('appSubtitle');
   document.getElementById('txt-lang-badge').textContent = t('langBadge');
-  document.getElementById('txt-trust-text').textContent = t('trustText');
-  document.getElementById('txt-audit-link').textContent = t('auditLink');
-  document.getElementById('txt-rating-title').textContent = t('ratingTitle');
-  document.getElementById('txt-rating-desc').textContent = t('ratingDesc');
-  document.getElementById('txt-btn-rate-store').textContent = t('btnRateStore');
   document.getElementById('txt-detected-label').textContent = t('detectedLabel');
   document.getElementById('txt-lesson-type-label').textContent = t('lessonTypeLabel');
-  document.getElementById('txt-guide-title').textContent = t('guideTitle');
-  document.getElementById('txt-guide-sub').textContent = t('guideSub');
-  document.getElementById('txt-step-1').textContent = t('step1');
-  document.getElementById('txt-step-2').textContent = t('step2');
-  document.getElementById('txt-step-3').textContent = t('step3');
-  document.getElementById('txt-footer-note').textContent = t('footerNote');
+  document.getElementById('txt-empty-title').textContent = t('emptyTitle');
+  document.getElementById('txt-empty-desc').textContent = t('emptyDesc');
+  document.getElementById('txt-rating-label').textContent = t('ratingLabel');
+  document.getElementById('txt-rating-msg').textContent = t('ratingMsg');
 
-  // Update Buttons
   const skipCurrentBtn = document.getElementById('btn-skip-current');
   if (!skipCurrentBtn.classList.contains('loading')) {
     document.getElementById('txt-btn-skip-current').textContent = t('btnSkipCurrent');
@@ -122,25 +95,8 @@ function updateUILanguage() {
     document.getElementById('txt-btn-skip-all').textContent = t('btnSkipAll');
   }
 
-  // Update Type pill if context exists
   if (currentContext && currentContext.itemType) {
     renderTypePill(currentContext.itemType);
-  }
-}
-
-function openReviewPage() {
-  localStorage.setItem('coursera_has_rated', 'true');
-  const ratingCard = document.getElementById('rating-card');
-  if (ratingCard) ratingCard.style.display = 'none';
-  chrome.tabs.create({ url: STORE_REVIEW_URL });
-}
-
-function showRatingCard() {
-  const hasRated = localStorage.getItem('coursera_has_rated');
-  const dismissed = sessionStorage.getItem('coursera_rating_dismissed');
-  if (!hasRated && !dismissed) {
-    const card = document.getElementById('rating-card');
-    if (card) card.style.display = 'flex';
   }
 }
 
@@ -182,6 +138,22 @@ function setLoading(btnId, textId, loading, customTextKey) {
   }
 }
 
+function openReviewPage() {
+  localStorage.setItem('coursera_has_rated', 'true');
+  const toast = document.getElementById('rating-toast');
+  if (toast) toast.style.display = 'none';
+  chrome.tabs.create({ url: STORE_REVIEW_URL });
+}
+
+function showRatingToast() {
+  const hasRated = localStorage.getItem('coursera_has_rated');
+  const dismissed = sessionStorage.getItem('coursera_rating_dismissed');
+  if (!hasRated && !dismissed) {
+    const toast = document.getElementById('rating-toast');
+    if (toast) toast.style.display = 'flex';
+  }
+}
+
 async function getActiveCourseraTab() {
   const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
   if (!tab || !tab.url) return { tab: null, isCoursera: false };
@@ -194,16 +166,12 @@ async function loadContext() {
   try {
     const { tab, isCoursera } = await getActiveCourseraTab();
     
-    // Update guide action button text based on whether user is on coursera or not
-    const guideBtn = document.getElementById('btn-guide-action');
     const guideBtnText = document.getElementById('txt-guide-action-btn');
     if (guideBtnText) {
       guideBtnText.textContent = isCoursera ? t('guideActionBtnTab') : t('guideActionBtnOpen');
     }
 
-    if (!tab) {
-      throw new Error('Not on Coursera');
-    }
+    if (!tab) throw new Error('Not on Coursera');
 
     const context = await chrome.tabs.sendMessage(tab.id, { action: 'getContext' });
     if (!context || context.error || !context.itemType) {
@@ -224,7 +192,7 @@ async function loadContext() {
     currentContext = null;
     document.getElementById('page-status').style.display = 'none';
     document.getElementById('action-buttons').style.display = 'none';
-    document.getElementById('empty-msg').style.display = 'block';
+    document.getElementById('empty-msg').style.display = 'flex';
     return null;
   }
 }
@@ -240,7 +208,7 @@ async function markCompleted() {
     const result = await chrome.tabs.sendMessage(tab.id, { action: 'markCompleted' });
     if (result && result.success) {
       showAlert('success', t('successCurrent'));
-      showRatingCard();
+      showRatingToast();
       setTimeout(() => {
         chrome.tabs.reload(tab.id);
       }, 1200);
@@ -286,7 +254,7 @@ async function markAllCompleted() {
   }
 }
 
-// Listen for progress events from content.js
+// Progress listener
 chrome.runtime.onMessage.addListener((message) => {
   if (message.action === 'progressUpdate') {
     const progContainer = document.getElementById('bulk-progress-container');
@@ -309,7 +277,7 @@ chrome.runtime.onMessage.addListener((message) => {
       progPct.textContent = '100%';
       progMsg.textContent = t('completedBulk', { total });
       setLoading('btn-skip-all', 'txt-btn-skip-all', false, 'btnSkipAll');
-      showRatingCard();
+      showRatingToast();
 
       setTimeout(async () => {
         const { tab } = await getActiveCourseraTab();
@@ -320,7 +288,6 @@ chrome.runtime.onMessage.addListener((message) => {
       setLoading('btn-skip-all', 'txt-btn-skip-all', false, 'btnSkipAll');
       progContainer.style.display = 'none';
     } else if (typeof message.message === 'string') {
-      // Fallback text parsing
       progMsg.textContent = message.message;
     }
   }
@@ -328,21 +295,19 @@ chrome.runtime.onMessage.addListener((message) => {
 
 // Event Listeners
 document.getElementById('btn-lang-toggle').addEventListener('click', toggleLanguage);
-document.getElementById('btn-header-refresh').addEventListener('click', loadContext);
 document.getElementById('btn-skip-current').addEventListener('click', markCompleted);
 document.getElementById('btn-skip-all').addEventListener('click', markAllCompleted);
 
-// Rating Event Listeners
-document.getElementById('btn-header-rate').addEventListener('click', openReviewPage);
 document.getElementById('lnk-footer-rate').addEventListener('click', (e) => {
   e.preventDefault();
   openReviewPage();
 });
+
 document.getElementById('btn-rate-store').addEventListener('click', openReviewPage);
 document.getElementById('btn-close-rating').addEventListener('click', () => {
   sessionStorage.setItem('coursera_rating_dismissed', 'true');
-  const card = document.getElementById('rating-card');
-  if (card) card.style.display = 'none';
+  const toast = document.getElementById('rating-toast');
+  if (toast) toast.style.display = 'none';
 });
 
 document.getElementById('btn-guide-action').addEventListener('click', async () => {
@@ -354,7 +319,6 @@ document.getElementById('btn-guide-action').addEventListener('click', async () =
   }
 });
 
-// Initialize UI
+// Init
 updateUILanguage();
 loadContext();
-
