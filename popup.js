@@ -1,8 +1,16 @@
+const STORE_REVIEW_URL = 'https://chromewebstore.google.com/detail/coursera-skip-video-read/jjbgneddmjkolgmpamecbhfgjgdiajlf/reviews';
+const GITHUB_URL = 'https://github.com/tuankiet18-dev/coursera-skip-tool';
+
 const I18N = {
   en: {
     appTitle: 'Coursera Skip',
     appSubtitle: 'Fast & Clean Automation',
     langBadge: 'EN',
+    trustText: '100% Safe • No Cookies Stored',
+    auditLink: 'GitHub ↗',
+    ratingTitle: '🎉 Enjoying the tool?',
+    ratingDesc: 'If Coursera Skip saved your valuable time, a quick 5-star review on the Chrome Web Store helps us immensely!',
+    btnRateStore: '⭐ Rate 5 Stars on Store',
     detectedLabel: 'Lesson Detected',
     lessonTypeLabel: 'Lesson Type',
     guideTitle: 'Ready to Automate',
@@ -29,6 +37,11 @@ const I18N = {
     appTitle: 'Coursera Skip',
     appSubtitle: 'Tự động hóa học tập nhanh gọn',
     langBadge: 'VI',
+    trustText: '100% An toàn • Không lưu Cookie',
+    auditLink: 'GitHub ↗',
+    ratingTitle: '🎉 Tiện ích giúp ích cho bạn?',
+    ratingDesc: 'Nếu Coursera Skip giúp bạn tiết kiệm thời gian học tập, hãy dành 10 giây tặng tác giả 5 sao trên Cửa hàng Chrome nhé!',
+    btnRateStore: '⭐ Đánh giá 5 sao trên Cửa hàng',
     detectedLabel: 'Đã nhận diện bài học',
     lessonTypeLabel: 'Loại bài học',
     guideTitle: 'Sẵn sàng tự động hóa',
@@ -84,6 +97,11 @@ function updateUILanguage() {
   document.getElementById('txt-app-title').textContent = t('appTitle');
   document.getElementById('txt-app-subtitle').textContent = t('appSubtitle');
   document.getElementById('txt-lang-badge').textContent = t('langBadge');
+  document.getElementById('txt-trust-text').textContent = t('trustText');
+  document.getElementById('txt-audit-link').textContent = t('auditLink');
+  document.getElementById('txt-rating-title').textContent = t('ratingTitle');
+  document.getElementById('txt-rating-desc').textContent = t('ratingDesc');
+  document.getElementById('txt-btn-rate-store').textContent = t('btnRateStore');
   document.getElementById('txt-detected-label').textContent = t('detectedLabel');
   document.getElementById('txt-lesson-type-label').textContent = t('lessonTypeLabel');
   document.getElementById('txt-guide-title').textContent = t('guideTitle');
@@ -107,6 +125,22 @@ function updateUILanguage() {
   // Update Type pill if context exists
   if (currentContext && currentContext.itemType) {
     renderTypePill(currentContext.itemType);
+  }
+}
+
+function openReviewPage() {
+  localStorage.setItem('coursera_has_rated', 'true');
+  const ratingCard = document.getElementById('rating-card');
+  if (ratingCard) ratingCard.style.display = 'none';
+  chrome.tabs.create({ url: STORE_REVIEW_URL });
+}
+
+function showRatingCard() {
+  const hasRated = localStorage.getItem('coursera_has_rated');
+  const dismissed = sessionStorage.getItem('coursera_rating_dismissed');
+  if (!hasRated && !dismissed) {
+    const card = document.getElementById('rating-card');
+    if (card) card.style.display = 'flex';
   }
 }
 
@@ -206,6 +240,7 @@ async function markCompleted() {
     const result = await chrome.tabs.sendMessage(tab.id, { action: 'markCompleted' });
     if (result && result.success) {
       showAlert('success', t('successCurrent'));
+      showRatingCard();
       setTimeout(() => {
         chrome.tabs.reload(tab.id);
       }, 1200);
@@ -274,6 +309,7 @@ chrome.runtime.onMessage.addListener((message) => {
       progPct.textContent = '100%';
       progMsg.textContent = t('completedBulk', { total });
       setLoading('btn-skip-all', 'txt-btn-skip-all', false, 'btnSkipAll');
+      showRatingCard();
 
       setTimeout(async () => {
         const { tab } = await getActiveCourseraTab();
@@ -295,6 +331,19 @@ document.getElementById('btn-lang-toggle').addEventListener('click', toggleLangu
 document.getElementById('btn-header-refresh').addEventListener('click', loadContext);
 document.getElementById('btn-skip-current').addEventListener('click', markCompleted);
 document.getElementById('btn-skip-all').addEventListener('click', markAllCompleted);
+
+// Rating Event Listeners
+document.getElementById('btn-header-rate').addEventListener('click', openReviewPage);
+document.getElementById('lnk-footer-rate').addEventListener('click', (e) => {
+  e.preventDefault();
+  openReviewPage();
+});
+document.getElementById('btn-rate-store').addEventListener('click', openReviewPage);
+document.getElementById('btn-close-rating').addEventListener('click', () => {
+  sessionStorage.setItem('coursera_rating_dismissed', 'true');
+  const card = document.getElementById('rating-card');
+  if (card) card.style.display = 'none';
+});
 
 document.getElementById('btn-guide-action').addEventListener('click', async () => {
   const { tab, isCoursera } = await getActiveCourseraTab();

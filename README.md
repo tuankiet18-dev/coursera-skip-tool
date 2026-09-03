@@ -4,8 +4,13 @@
 </div>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-1.1.0-blue.svg" alt="Version">
-  <img src="https://img.shields.io/badge/Chrome_Web_Store-Pending_Review-orange.svg" alt="Chrome Web Store">
+  <img src="https://img.shields.io/badge/version-1.1.1-blue.svg" alt="Version">
+  <a href="https://chromewebstore.google.com/detail/coursera-skip-video-read/jjbgneddmjkolgmpamecbhfgjgdiajlf">
+    <img src="https://img.shields.io/badge/Chrome_Web_Store-Install_1--Click-success?logo=googlechrome&logoColor=white" alt="Chrome Web Store">
+  </a>
+  <a href="https://chromewebstore.google.com/detail/coursera-skip-video-read/jjbgneddmjkolgmpamecbhfgjgdiajlf/reviews">
+    <img src="https://img.shields.io/badge/Reviews-Rate_5★-gold" alt="Rate 5 Stars">
+  </a>
   <img src="https://img.shields.io/badge/status-active-success.svg" alt="Status">
   <img src="https://img.shields.io/badge/license-MIT-green.svg" alt="License">
 </p>
@@ -27,14 +32,25 @@ Unlike other versions circulating online that may contain harmful code (cookie s
 
 - **⚡ Complete Current Lesson:** Instantly mark the currently opened Coursera video lecture or reading material as completed.
 - **🚀 Complete Entire Course (Bulk):** Automatically detect, batch-process, and complete all video lectures and reading items in the course.
+- **⭐ Smart Review & Rating:** Easily support the project with a 5-star rating directly from within the extension.
 - **🌐 Internationalization (i18n):** Full support for **English** and **Vietnamese (Tiếng Việt)** with a 1-click header switcher `[🌐 EN | VI]`.
 - **✨ Clean & Friendly UI/UX:** Streamlined dark theme with zero clutter, clean course name formatting, and an intuitive 3-step guide screen.
 - **🔒 100% Secure & Open-Source:** Fully transparent code. Safe for your personal Coursera account.
 
 ## 🛠 Installation Guide
 
+### Option 1: Official Chrome Web Store (Recommended - 1 Click)
+👉 **[Click here to Install from Chrome Web Store](https://chromewebstore.google.com/detail/coursera-skip-video-read/jjbgneddmjkolgmpamecbhfgjgdiajlf)**
+
+> [!NOTE]
+> **Why do I see "Proceed with caution"?**  
+> As a newly verified developer account, Chrome Enhanced Safe Browsing displays this precautionary prompt for all new extensions. Simply click **"Continue to install"**. Our entire extension is 100% open-source and publicly auditable here!
+
+---
+
+### Option 2: Manual Developer Mode (From Source)
 1. Clone or download this repository as a `.zip` file and extract it.
-2. Open your Chromium-based browser (Chrome, Edge, Brave, Opera, Arc) and go to the Extensions page: `chrome://extensions/`.
+2. Open your Chromium-based browser (Chrome, Edge, Brave, Opera, Arc) and navigate to `chrome://extensions/`.
 3. Enable **Developer mode** in the top-right corner.
 4. Click the **Load unpacked** button.
 5. Select the **`coursera-skip-tool` folder** containing `manifest.json`.

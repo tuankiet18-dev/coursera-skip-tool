@@ -397,6 +397,131 @@
     .btn.loading .spinner { display: block; }
     .btn.loading .btn-icon { display: none; }
 
+    /* Trust Banner */
+    .trust-banner {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      font-size: 11px;
+      background: rgba(16, 185, 129, 0.08);
+      border: 1px solid rgba(16, 185, 129, 0.22);
+      border-radius: 8px;
+      padding: 6px 10px;
+      color: #34d399;
+      font-weight: 500;
+    }
+    .trust-left {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .trust-left svg {
+      width: 13px;
+      height: 13px;
+      fill: #10b981;
+      flex-shrink: 0;
+    }
+    .audit-link {
+      color: #818cf8;
+      text-decoration: none;
+      font-weight: 600;
+      font-size: 10px;
+      padding: 2px 6px;
+      border-radius: 4px;
+      background: rgba(99, 102, 241, 0.12);
+      border: 1px solid rgba(99, 102, 241, 0.25);
+      transition: all 0.2s ease;
+    }
+    .audit-link:hover {
+      background: rgba(99, 102, 241, 0.25);
+      color: #fff;
+    }
+
+    /* Rate 5-Star Header Button */
+    .rate-btn {
+      background: rgba(234, 179, 8, 0.12);
+      border: 1px solid rgba(234, 179, 8, 0.35);
+      color: #facc15;
+      border-radius: 20px;
+      padding: 4px 8px;
+      font-size: 11px;
+      font-weight: 700;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      transition: all 0.2s ease;
+    }
+    .rate-btn:hover {
+      background: rgba(234, 179, 8, 0.22);
+      box-shadow: 0 0 10px rgba(234, 179, 8, 0.35);
+      color: #fef08a;
+    }
+
+    /* Smart Rating Prompt Card */
+    .rating-card {
+      background: linear-gradient(135deg, rgba(234, 179, 8, 0.12) 0%, rgba(99, 102, 241, 0.12) 100%);
+      border: 1px solid rgba(234, 179, 8, 0.3);
+      border-radius: 12px;
+      padding: 12px 14px;
+      animation: fadeIn 0.3s ease;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    .rating-card-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .rating-card-title {
+      font-size: 12px;
+      font-weight: 700;
+      color: #fef08a;
+      display: flex;
+      align-items: center;
+      gap: 5px;
+    }
+    .close-rating-btn {
+      background: transparent;
+      border: none;
+      color: var(--text-muted);
+      cursor: pointer;
+      font-size: 12px;
+      padding: 2px 4px;
+      border-radius: 4px;
+      line-height: 1;
+    }
+    .close-rating-btn:hover { color: #fff; }
+    .rating-card-desc {
+      margin: 0;
+      font-size: 11px;
+      color: #cbd5e1;
+      line-height: 1.4;
+    }
+    .btn-rate-action {
+      background: linear-gradient(135deg, #eab308 0%, #ca8a04 100%);
+      color: #0b0f19;
+      font-weight: 700;
+      padding: 8px 12px;
+      border-radius: 8px;
+      font-size: 11px;
+      box-shadow: 0 2px 8px rgba(234, 179, 8, 0.3);
+      width: 100%;
+      border: none;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      transition: all 0.2s ease;
+    }
+    .btn-rate-action:hover {
+      transform: translateY(-1px);
+      box-shadow: 0 4px 12px rgba(234, 179, 8, 0.45);
+      color: #000;
+    }
+
     /* Progress UI */
     .progress-container {
       display: none;
@@ -437,6 +562,28 @@
       font-size: 10px;
       color: var(--text-muted);
       margin-top: 2px;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+    .footer-links {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      font-size: 11px;
+    }
+    .footer-link {
+      color: var(--text-secondary);
+      text-decoration: none;
+      transition: color 0.2s ease;
+    }
+    .footer-link:hover {
+      color: #38bdf8;
+    }
+    .footer-link.star {
+      color: #facc15;
+      font-weight: 600;
     }
 
     @keyframes spin { to { transform: rotate(360deg); } }
@@ -466,6 +613,10 @@
       </div>
 
       <div class="header-actions">
+        <button id="btn-header-rate" class="rate-btn" title="Rate 5 Stars on Chrome Web Store">
+          <span>⭐</span>
+          <span id="txt-rate-header">5★</span>
+        </button>
         <button id="btn-lang-toggle" class="lang-btn" title="Switch Language / Đổi ngôn ngữ">
           <span>🌐</span>
           <span id="txt-lang-badge">EN</span>
@@ -476,8 +627,29 @@
       </div>
     </div>
 
+    <!-- Trust & Security Banner -->
+    <div class="trust-banner">
+      <div class="trust-left">
+        <svg viewBox="0 0 24 24"><path d="M12 1L3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-4zm-2 16l-4-4 1.41-1.41L10 14.17l6.59-6.59L18 9l-8 8z"/></svg>
+        <span id="txt-trust-text">100% Safe • No Cookies Stored</span>
+      </div>
+      <a href="https://github.com/tuankiet18-dev/coursera-skip-tool" target="_blank" class="audit-link" id="txt-audit-link">GitHub ↗</a>
+    </div>
+
     <!-- Alert / Toast Banner -->
     <div id="result-alert" class="alert"></div>
+
+    <!-- Smart Rating Invitation Card -->
+    <div id="rating-card" class="rating-card" style="display: none;">
+      <div class="rating-card-header">
+        <span class="rating-card-title" id="txt-rating-title">🎉 Enjoying the tool?</span>
+        <button id="btn-close-rating" class="close-rating-btn" title="Dismiss">✕</button>
+      </div>
+      <p class="rating-card-desc" id="txt-rating-desc">If Coursera Skip saved your time, a quick 5-star review on the Chrome Web Store helps us immensely!</p>
+      <button id="btn-rate-store" class="btn-rate-action">
+        <span id="txt-btn-rate-store">⭐ Rate 5 Stars on Store</span>
+      </button>
+    </div>
 
     <!-- State 1: Active Lesson Detected -->
     <div id="page-status" class="card" style="display: none;">
@@ -550,8 +722,15 @@
     </div>
 
     <!-- Footer -->
-    <div class="footer" id="txt-footer-note">
-      Requires active course enrollment. Safe & Open-Source.
+    <div class="footer">
+      <div class="footer-links">
+        <a id="lnk-footer-rate" href="#" class="footer-link star">⭐ Rate 5★</a>
+        <span>•</span>
+        <a href="https://github.com/tuankiet18-dev/coursera-skip-tool" target="_blank" class="footer-link">🐙 GitHub</a>
+        <span>•</span>
+        <a href="https://github.com/tuankiet18-dev/coursera-skip-tool/blob/main/PRIVACY.md" target="_blank" class="footer-link">Privacy</a>
+      </div>
+      <div id="txt-footer-note">Requires active course enrollment. Safe & Open-Source.</div>
     </div>
 
   </div>
