@@ -89,6 +89,13 @@ If you find this tool helpful, please support us by:
 - 🔗 **Sharing** the link on Reddit (`r/coursera`, `r/learnprogramming`), Discord, or student communities.
 - 🏷️ Adding relevant tags in GitHub settings (`coursera`, `coursera-skip-tool`, `automation`, `browser-extension`, `speed-learning`).
 
+## 🤝 Contributing
+
+Contributions of all kinds are welcome! Whether you are fixing a bug, adding a new language translation, or improving the documentation:
+
+1. Check out our **[Contributing Guidelines (CONTRIBUTING.md)](./CONTRIBUTING.md)** for local development setup, code structure, and guidelines.
+2. Feel free to open an [Issue](https://github.com/tuankiet18-dev/coursera-skip-tool/issues) or submit a [Pull Request](https://github.com/tuankiet18-dev/coursera-skip-tool/pulls).
+
 ## ⚖️ Disclaimer
 
 This tool is created for educational and research purposes to demonstrate browser automation capabilities. Use it responsibly and in accordance with Coursera's terms of service.
