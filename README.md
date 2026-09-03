@@ -4,7 +4,7 @@
 </div>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-1.1.1-blue.svg" alt="Version">
+  <img src="https://img.shields.io/badge/version-1.1.2-blue.svg" alt="Version">
   <a href="https://chromewebstore.google.com/detail/coursera-skip-video-read/jjbgneddmjkolgmpamecbhfgjgdiajlf">
     <img src="https://img.shields.io/badge/Chrome_Web_Store-Install_1--Click-success?logo=googlechrome&logoColor=white" alt="Chrome Web Store">
   </a>
