@@ -6,7 +6,10 @@ const I18N = {
     detectedLabel: 'Lesson Detected',
     lessonTypeLabel: 'Type',
     emptyTitle: 'Ready to Automate',
-    emptyDesc: 'Open any video or reading lesson on Coursera to start.',
+    emptySub: 'Follow 3 simple steps to start:',
+    step1: 'Enroll in your Coursera course',
+    step2: 'Open any Video or Reading lesson',
+    step3: 'Click Complete in this extension',
     guideActionBtnTab: '🔄 Refresh Detection',
     guideActionBtnOpen: '🚀 Open Coursera',
     btnSkipCurrent: 'Complete This Lesson',
@@ -29,7 +32,10 @@ const I18N = {
     detectedLabel: 'Đã nhận diện bài học',
     lessonTypeLabel: 'Loại bài',
     emptyTitle: 'Sẵn sàng tự động hóa',
-    emptyDesc: 'Vui lòng mở một bài Video hoặc Bài đọc trên Coursera để bắt đầu.',
+    emptySub: 'Làm theo 3 bước đơn giản để bắt đầu:',
+    step1: 'Đăng ký (Enroll) vào khóa học',
+    step2: 'Mở 1 bài Video hoặc Reading bất kỳ',
+    step3: 'Mở tiện ích và bấm Hoàn thành',
     guideActionBtnTab: '🔄 Nhận diện lại',
     guideActionBtnOpen: '🚀 Mở Coursera',
     btnSkipCurrent: 'Hoàn thành bài hiện tại',
@@ -81,7 +87,10 @@ function updateUILanguage() {
   document.getElementById('txt-detected-label').textContent = t('detectedLabel');
   document.getElementById('txt-lesson-type-label').textContent = t('lessonTypeLabel');
   document.getElementById('txt-empty-title').textContent = t('emptyTitle');
-  document.getElementById('txt-empty-desc').textContent = t('emptyDesc');
+  document.getElementById('txt-empty-sub').textContent = t('emptySub');
+  document.getElementById('txt-step-1').textContent = t('step1');
+  document.getElementById('txt-step-2').textContent = t('step2');
+  document.getElementById('txt-step-3').textContent = t('step3');
   document.getElementById('txt-rating-label').textContent = t('ratingLabel');
   document.getElementById('txt-rating-msg').textContent = t('ratingMsg');
 
