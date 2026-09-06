@@ -51,12 +51,14 @@ async function courseraFetch(url, options = {}) {
 function getCourseContext() {
   const href = window.location.href;
 
-  // 1. Standard lesson types (lecture, supplement, quiz, programming)
+  // 1. Standard lesson types (lecture, supplement, quiz, programming, discussionPrompt, dialogue)
   const match = href.match(
-    /\/learn\/([^/]+)\/(lecture|supplement|quiz|programming)\/([^/?#]+)/
+    /\/learn\/([^/]+)\/(lecture|supplement|quiz|programming|discussionPrompt|dialogue)\/([^/?#]+)/i
   );
   if (match) {
-    return { courseSlug: match[1], itemType: match[2], itemId: match[3] };
+    let itemType = match[2];
+    if (itemType.toLowerCase() === 'discussionprompt') itemType = 'discussionPrompt';
+    return { courseSlug: match[1], itemType, itemId: match[3] };
   }
 
   // 2. Peer review URLs — Coursera uses several patterns:
@@ -65,14 +67,20 @@ function getCourseContext() {
   //    /learn/{slug}/peer-review/{itemId}/review
   //    /learn/{slug}/submit-revisions/{itemId}  (resubmit review)
   const peerPatterns = [
-    /\/learn\/([^/]+)\/peer-review\/([^/?#]+)/,
-    /\/learn\/([^/]+)\/submit-revisions\/([^/?#]+)/,
+    /\/learn\/([^/]+)\/peer-review\/([^/?#]+)/i,
+    /\/learn\/([^/]+)\/submit-revisions\/([^/?#]+)/i,
   ];
   for (const pattern of peerPatterns) {
     const m = href.match(pattern);
     if (m) {
       return { courseSlug: m[1], itemType: 'peer', itemId: m[2] };
     }
+  }
+
+  // 3. Fallback for any discussionPrompt URL variations
+  const discMatch = href.match(/\/learn\/([^/]+)\/discussionPrompt\/([^/?#]+)/i);
+  if (discMatch) {
+    return { courseSlug: discMatch[1], itemType: 'discussionPrompt', itemId: discMatch[2] };
   }
 
   return null;
@@ -679,10 +687,17 @@ function getRandomDiscussionResponse() {
 
 /**
  * Kiểm tra xem trang hiện tại có chứa Discussion Prompt không.
- * Discussion Prompt không có URL riêng — nằm ở cuối bài lecture/supplement.
+ * Hỗ trợ cả 2 trường hợp:
+ *  1. Trang chuyên biệt: URL có dạng /learn/{slug}/discussionPrompt/{itemId}/...
+ *  2. Trang nhúng: Discussion prompt nằm ở cuối bài lecture/supplement.
  * Trả về { hasDiscussion: bool, itemId: string|null }.
  */
 function checkDiscussionPrompt() {
+  const ctx = getCourseContext();
+  if (ctx?.itemType === 'discussionPrompt') {
+    return { hasDiscussion: true, itemId: ctx.itemId };
+  }
+
   const discussionSelectors = [
     '[data-testid*="discussion-prompt"]',
     '.c-discussion-prompt',
@@ -693,7 +708,6 @@ function checkDiscussionPrompt() {
 
   for (const sel of discussionSelectors) {
     if (document.querySelector(sel)) {
-      const ctx = getCourseContext();
       return { hasDiscussion: true, itemId: ctx?.itemId || null };
     }
   }
@@ -703,7 +717,6 @@ function checkDiscussionPrompt() {
   for (const h of headings) {
     const text = (h.textContent || '').toLowerCase();
     if (text.includes('discussion prompt') || text.includes('thảo luận')) {
-      const ctx = getCourseContext();
       return { hasDiscussion: true, itemId: ctx?.itemId || null };
     }
   }
@@ -712,11 +725,59 @@ function checkDiscussionPrompt() {
 }
 
 /**
+ * Fallback DOM: Tự động tìm khung soạn thảo trên trang và bấm nút Reply.
+ */
+async function postDiscussionViaDOM(text) {
+  const editor = document.querySelector(
+    'div[contenteditable="true"], div[role="textbox"], .cml-editor, div[data-testid*="editor"], textarea'
+  );
+  if (!editor) {
+    return { success: false, error: 'Không tìm thấy ô nhập câu trả lời thảo luận trên trang.' };
+  }
+
+  editor.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  editor.focus();
+  editor.click();
+  await sleep(250);
+
+  fillTextInput(editor, text);
+  await sleep(400);
+
+  // Tìm nút Reply trên giao diện
+  const replyBtn = Array.from(document.querySelectorAll('button')).find(b => {
+    const txt = (b.textContent || '').trim().toLowerCase();
+    return (txt === 'reply' || txt === 'phản hồi' || txt === 'post' || txt === 'đăng');
+  }) || document.querySelector('button[data-testid*="reply"], button[type="submit"]');
+
+  if (replyBtn) {
+    replyBtn.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    await sleep(300);
+    if (!replyBtn.disabled) {
+      replyBtn.click();
+      return {
+        success: true,
+        message: '✅ Đã điền câu trả lời và bấm Reply thành công!'
+      };
+    }
+    // Nếu nút bị disable, highlight để user bấm
+    replyBtn.style.outline = '3px solid #0ea5e9';
+    return {
+      success: true,
+      message: '✅ Đã điền câu trả lời! Vui lòng bấm nút Reply (viền xanh).'
+    };
+  }
+
+  return {
+    success: true,
+    message: '✅ Đã điền câu trả lời vào khung soạn thảo!'
+  };
+}
+
+/**
  * Tự động đăng câu trả lời vào Discussion Prompt của bài học hiện tại.
  * Flow:
- *  1. Lấy userId, courseId, courseSlug, csrfToken
- *  2. GET /api/onDemandDiscussionPrompts.v1/{userId}~{courseId}~{itemId} → lấy questionId
- *  3. POST /api/onDemandCourseForumAnswers.v1/ với body CML format
+ *  1. Thử qua Coursera Forum API (nhanh & sạch)
+ *  2. Nếu API không được → tự động fallback sang tương tác DOM trực tiếp
  */
 async function autoPostDiscussion() {
   console.log('[CourseraSkip] Starting Auto Discussion Post...');
@@ -727,107 +788,76 @@ async function autoPostDiscussion() {
   }
 
   const { courseSlug, itemId } = ctx;
-
-  // 1. Lấy userId
-  const userId = await getUserId();
-  if (!userId) {
-    return { success: false, error: 'Không lấy được User ID. Vui lòng đăng nhập Coursera.' };
-  }
-
-  // 2. Lấy courseId
-  const courseId = await getCourseId(courseSlug);
-  if (!courseId) {
-    return { success: false, error: 'Không lấy được Course ID.' };
-  }
-
-  const csrfToken = getCsrfToken();
-
-  // 3. Lấy Discussion Prompt Question ID
-  const discussionFields = [
-    'onDemandDiscussionPromptQuestions.v1(content,creatorId,createdAt,forumId,sessionId,lastAnsweredBy,lastAnsweredAt,totalAnswerCount,topLevelAnswerCount,viewCount)',
-    'promptType',
-    'question',
-  ].join(',');
-
-  const promptUrl = `${BASE}/api/onDemandDiscussionPrompts.v1/${userId}~${courseId}~${itemId}?fields=${discussionFields}&includes=question`;
-
-  console.log('[CourseraSkip] Fetching discussion prompt:', promptUrl);
-  let questionId = null;
-
-  try {
-    const promptRes = await courseraFetch(promptUrl);
-    console.log('[CourseraSkip] onDemandDiscussionPrompts status:', promptRes.status);
-
-    if (!promptRes.ok) {
-      return { success: false, error: `Lỗi ${promptRes.status}: Không lấy được Discussion Prompt. Bài này có thể không có Discussion Prompt.` };
-    }
-
-    const promptData = await promptRes.json();
-    // courseItemForumQuestionId format: "{courseId}~{forumId}~{questionId}"
-    const courseItemForumQuestionId = promptData?.elements?.[0]?.promptType?.courseItemForumQuestionId
-      ?? promptData?.elements?.[0]?.question?.courseItemForumQuestionId;
-
-    if (!courseItemForumQuestionId) {
-      return { success: false, error: 'Không tìm thấy Discussion Prompt ID. Bài này có thể không có Discussion Prompt bắt buộc.' };
-    }
-
-    // Lấy questionId từ phần tử thứ 3 (index 2) của chuỗi split bởi "~"
-    const parts = courseItemForumQuestionId.split('~');
-    questionId = parts[2] || parts[parts.length - 1];
-    console.log('[CourseraSkip] courseItemForumQuestionId:', courseItemForumQuestionId, '→ questionId:', questionId);
-  } catch (e) {
-    return { success: false, error: `Lỗi khi lấy Discussion Prompt: ${e.message}` };
-  }
-
-  if (!questionId) {
-    return { success: false, error: 'Không tách được questionId từ Discussion Prompt.' };
-  }
-
-  // Chờ 1s để tránh rate limit
-  await sleep(1000);
-
-  // 4. Đăng câu trả lời vào diễn đàn
   const answerText = getRandomDiscussionResponse();
-  const answerBody = {
-    content: {
-      typeName: 'cml',
-      definition: {
-        dtdId: 'discussion/1',
-        value: `<co-content><text>${answerText}</text></co-content>`,
-      },
-    },
-    courseForumQuestionId: `${courseId}~${questionId}`,
-  };
 
-  const answerFields = 'content,forumQuestionId,parentForumAnswerId,state,creatorId,createdAt,order,upvoteCount,childAnswerCount,isFlagged,isUpvoted,courseItemForumQuestionId,parentCourseItemForumAnswerId';
-  const answerUrl = `${BASE}/api/onDemandCourseForumAnswers.v1/?fields=${answerFields}&includes=profiles,children,userId`;
-
-  console.log('[CourseraSkip] Posting discussion answer to:', answerUrl);
-
+  // --- CÁCH 1: Thử gọi Coursera API ---
   try {
-    const answerRes = await courseraFetch(answerUrl, {
-      method: 'POST',
-      headers: { 'x-csrf3-token': csrfToken },
-      body: JSON.stringify(answerBody),
-    });
+    const userId = await getUserId();
+    const courseId = await getCourseId(courseSlug);
+    const csrfToken = getCsrfToken();
 
-    console.log('[CourseraSkip] Post answer status:', answerRes.status);
+    if (userId && courseId) {
+      const discussionFields = [
+        'onDemandDiscussionPromptQuestions.v1(content,creatorId,createdAt,forumId,sessionId,lastAnsweredBy,lastAnsweredAt,totalAnswerCount,topLevelAnswerCount,viewCount)',
+        'promptType',
+        'question',
+      ].join(',');
 
-    if (answerRes.ok || answerRes.status === 201) {
-      return {
-        success: true,
-        message: '✅ Đã đăng câu trả lời thảo luận thành công! Coursera sẽ tự cập nhật tiến độ bài học.',
-      };
+      const promptUrl = `${BASE}/api/onDemandDiscussionPrompts.v1/${userId}~${courseId}~${itemId}?fields=${discussionFields}&includes=question`;
+      console.log('[CourseraSkip] Fetching discussion prompt:', promptUrl);
+
+      const promptRes = await courseraFetch(promptUrl);
+      console.log('[CourseraSkip] onDemandDiscussionPrompts status:', promptRes.status);
+
+      if (promptRes.ok) {
+        const promptData = await promptRes.json();
+        const courseItemForumQuestionId = promptData?.elements?.[0]?.promptType?.courseItemForumQuestionId
+          ?? promptData?.elements?.[0]?.question?.courseItemForumQuestionId;
+
+        if (courseItemForumQuestionId) {
+          const parts = courseItemForumQuestionId.split('~');
+          const questionId = parts[2] || parts[parts.length - 1];
+
+          if (questionId) {
+            await sleep(500);
+            const answerBody = {
+              content: {
+                typeName: 'cml',
+                definition: {
+                  dtdId: 'discussion/1',
+                  value: `<co-content><text>${answerText}</text></co-content>`,
+                },
+              },
+              courseForumQuestionId: `${courseId}~${questionId}`,
+            };
+
+            const answerFields = 'content,forumQuestionId,parentForumAnswerId,state,creatorId,createdAt,order,upvoteCount,childAnswerCount,isFlagged,isUpvoted,courseItemForumQuestionId,parentCourseItemForumAnswerId';
+            const answerUrl = `${BASE}/api/onDemandCourseForumAnswers.v1/?fields=${answerFields}&includes=profiles,children,userId`;
+
+            console.log('[CourseraSkip] Posting discussion answer to:', answerUrl);
+            const answerRes = await courseraFetch(answerUrl, {
+              method: 'POST',
+              headers: { 'x-csrf3-token': csrfToken },
+              body: JSON.stringify(answerBody),
+            });
+
+            console.log('[CourseraSkip] Post answer status:', answerRes.status);
+            if (answerRes.ok || answerRes.status === 201) {
+              return {
+                success: true,
+                message: '✅ Đã đăng câu trả lời thảo luận thành công! Coursera sẽ tự cập nhật tiến độ.',
+              };
+            }
+          }
+        }
+      }
     }
-
-    if (answerRes.status === 429) {
-      return { success: false, error: 'Bị giới hạn tốc độ (Rate Limit) của Coursera. Vui lòng thử lại sau vài phút.' };
-    }
-
-    const errBody = await answerRes.text().catch(() => '');
-    return { success: false, error: `Lỗi ${answerRes.status} khi đăng trả lời. ${errBody.slice(0, 120)}` };
-  } catch (e) {
-    return { success: false, error: `Lỗi kết nối khi đăng trả lời: ${e.message}` };
+  } catch (apiErr) {
+    console.log('[CourseraSkip] API post discussion failed, falling back to DOM...', apiErr);
   }
+
+  // --- CÁCH 2: Fallback qua tương tác DOM ---
+  console.log('[CourseraSkip] Running DOM fallback for discussion post...');
+  return await postDiscussionViaDOM(answerText);
 }
 

@@ -73,6 +73,8 @@ const TYPE_CONFIG = {
   quiz: { icon: '📝', en: 'Quiz Assessment', vi: 'Bài kiểm tra (Quiz)' },
   programming: { icon: '💻', en: 'Programming Lab', vi: 'Bài tập Thực hành' },
   peer: { icon: '👥', en: 'Peer Review', vi: 'Bài tập Chấm chéo' },
+  discussionPrompt: { icon: '💬', en: 'Discussion Prompt', vi: 'Câu hỏi thảo luận' },
+  dialogue: { icon: '💬', en: 'Dialogue', vi: 'Hội thoại (Dialogue)' },
 };
 
 let currentLang = localStorage.getItem('coursera_skip_lang') || (navigator.language?.startsWith('vi') ? 'vi' : 'en');
@@ -221,22 +223,28 @@ async function loadContext() {
 
     // Switch buttons based on lesson type
     const isPeer = context.itemType === 'peer';
-    document.getElementById('btn-skip-current').style.display = isPeer ? 'none' : 'flex';
+    const isDiscussion = context.itemType === 'discussionPrompt';
+
+    document.getElementById('btn-skip-current').style.display = (isPeer || isDiscussion) ? 'none' : 'flex';
     document.getElementById('btn-skip-all').style.display = isPeer ? 'none' : 'flex';
     document.getElementById('btn-auto-review').style.display = isPeer ? 'flex' : 'none';
 
-    // Always hide discussion button first, then probe for discussion prompt
-    document.getElementById('btn-auto-discussion').style.display = 'none';
+    // Show discussion button if dedicated discussion page OR embedded section
+    if (isDiscussion) {
+      document.getElementById('btn-auto-discussion').style.display = 'flex';
+    } else {
+      document.getElementById('btn-auto-discussion').style.display = 'none';
 
-    // For lecture and supplement pages, check if there's a Discussion Prompt section
-    if (!isPeer && (context.itemType === 'lecture' || context.itemType === 'supplement')) {
-      try {
-        const discussionCheck = await chrome.tabs.sendMessage(tab.id, { action: 'checkDiscussionPrompt' });
-        if (discussionCheck?.hasDiscussion) {
-          document.getElementById('btn-auto-discussion').style.display = 'flex';
+      // For lecture and supplement pages, check if there's an embedded Discussion Prompt section
+      if (!isPeer && (context.itemType === 'lecture' || context.itemType === 'supplement')) {
+        try {
+          const discussionCheck = await chrome.tabs.sendMessage(tab.id, { action: 'checkDiscussionPrompt' });
+          if (discussionCheck?.hasDiscussion) {
+            document.getElementById('btn-auto-discussion').style.display = 'flex';
+          }
+        } catch (_) {
+          // If content script can't respond, just skip — not critical
         }
-      } catch (_) {
-        // If content script can't respond, just skip — not critical
       }
     }
 
