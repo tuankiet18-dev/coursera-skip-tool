@@ -646,7 +646,188 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       .catch((err) => sendResponse({ success: false, error: `Lỗi: ${err.message}` }));
     return true;
   }
+  if (message.action === 'checkDiscussionPrompt') {
+    sendResponse(checkDiscussionPrompt());
+    return false;
+  }
+  if (message.action === 'autoPostDiscussion') {
+    autoPostDiscussion()
+      .then(sendResponse)
+      .catch((err) => sendResponse({ success: false, error: `Lỗi: ${err.message}` }));
+    return true;
+  }
   if (message.action === 'getContext') {
     sendResponse(getCourseContext() || { error: 'Không nhận diện được trang.' });
   }
 });
+
+// ===== AUTO DISCUSSION PROMPT =====
+
+const DISCUSSION_RESPONSES = [
+  "This lesson provided a clear and well-structured overview of the topic. I particularly appreciated how the key concepts were broken down step by step, making them much easier to understand and apply.",
+  "After going through this material, I find the approach presented here both practical and insightful. It gave me a new perspective on how to tackle similar problems in real-world scenarios.",
+  "The content covered in this lesson was very informative. I especially liked the examples used to illustrate the core ideas — they really helped connect theory to practice.",
+  "This was a thought-provoking lesson. The framework introduced here aligns well with industry best practices and I can see how it can be directly applied to improve outcomes in various contexts.",
+  "I found this lesson to be an excellent introduction to the subject. The explanation was concise yet comprehensive, and it raised several interesting points worth exploring further.",
+  "The material in this lesson resonated with me because it addresses challenges that come up frequently in practice. Understanding these concepts helps me think more critically about the problems I encounter.",
+  "This lesson did a great job of balancing depth and accessibility. The step-by-step breakdown made even the more complex ideas approachable, and I now feel more confident applying these concepts."
+];
+
+function getRandomDiscussionResponse() {
+  return DISCUSSION_RESPONSES[Math.floor(Math.random() * DISCUSSION_RESPONSES.length)];
+}
+
+/**
+ * Kiểm tra xem trang hiện tại có chứa Discussion Prompt không.
+ * Discussion Prompt không có URL riêng — nằm ở cuối bài lecture/supplement.
+ * Trả về { hasDiscussion: bool, itemId: string|null }.
+ */
+function checkDiscussionPrompt() {
+  const discussionSelectors = [
+    '[data-testid*="discussion-prompt"]',
+    '.c-discussion-prompt',
+    '.rc-DiscussionPrompt',
+    '[data-testid="discussion-prompt-section"]',
+    'div[class*="DiscussionPrompt"]',
+  ];
+
+  for (const sel of discussionSelectors) {
+    if (document.querySelector(sel)) {
+      const ctx = getCourseContext();
+      return { hasDiscussion: true, itemId: ctx?.itemId || null };
+    }
+  }
+
+  // Fallback: tìm tiêu đề / heading gợi ý Discussion Prompt
+  const headings = document.querySelectorAll('h1, h2, h3, h4, [role="heading"]');
+  for (const h of headings) {
+    const text = (h.textContent || '').toLowerCase();
+    if (text.includes('discussion prompt') || text.includes('thảo luận')) {
+      const ctx = getCourseContext();
+      return { hasDiscussion: true, itemId: ctx?.itemId || null };
+    }
+  }
+
+  return { hasDiscussion: false, itemId: null };
+}
+
+/**
+ * Tự động đăng câu trả lời vào Discussion Prompt của bài học hiện tại.
+ * Flow:
+ *  1. Lấy userId, courseId, courseSlug, csrfToken
+ *  2. GET /api/onDemandDiscussionPrompts.v1/{userId}~{courseId}~{itemId} → lấy questionId
+ *  3. POST /api/onDemandCourseForumAnswers.v1/ với body CML format
+ */
+async function autoPostDiscussion() {
+  console.log('[CourseraSkip] Starting Auto Discussion Post...');
+
+  const ctx = getCourseContext();
+  if (!ctx || !ctx.itemId) {
+    return { success: false, error: 'Không nhận diện được bài học. Vui lòng mở trang bài giảng Coursera.' };
+  }
+
+  const { courseSlug, itemId } = ctx;
+
+  // 1. Lấy userId
+  const userId = await getUserId();
+  if (!userId) {
+    return { success: false, error: 'Không lấy được User ID. Vui lòng đăng nhập Coursera.' };
+  }
+
+  // 2. Lấy courseId
+  const courseId = await getCourseId(courseSlug);
+  if (!courseId) {
+    return { success: false, error: 'Không lấy được Course ID.' };
+  }
+
+  const csrfToken = getCsrfToken();
+
+  // 3. Lấy Discussion Prompt Question ID
+  const discussionFields = [
+    'onDemandDiscussionPromptQuestions.v1(content,creatorId,createdAt,forumId,sessionId,lastAnsweredBy,lastAnsweredAt,totalAnswerCount,topLevelAnswerCount,viewCount)',
+    'promptType',
+    'question',
+  ].join(',');
+
+  const promptUrl = `${BASE}/api/onDemandDiscussionPrompts.v1/${userId}~${courseId}~${itemId}?fields=${discussionFields}&includes=question`;
+
+  console.log('[CourseraSkip] Fetching discussion prompt:', promptUrl);
+  let questionId = null;
+
+  try {
+    const promptRes = await courseraFetch(promptUrl);
+    console.log('[CourseraSkip] onDemandDiscussionPrompts status:', promptRes.status);
+
+    if (!promptRes.ok) {
+      return { success: false, error: `Lỗi ${promptRes.status}: Không lấy được Discussion Prompt. Bài này có thể không có Discussion Prompt.` };
+    }
+
+    const promptData = await promptRes.json();
+    // courseItemForumQuestionId format: "{courseId}~{forumId}~{questionId}"
+    const courseItemForumQuestionId = promptData?.elements?.[0]?.promptType?.courseItemForumQuestionId
+      ?? promptData?.elements?.[0]?.question?.courseItemForumQuestionId;
+
+    if (!courseItemForumQuestionId) {
+      return { success: false, error: 'Không tìm thấy Discussion Prompt ID. Bài này có thể không có Discussion Prompt bắt buộc.' };
+    }
+
+    // Lấy questionId từ phần tử thứ 3 (index 2) của chuỗi split bởi "~"
+    const parts = courseItemForumQuestionId.split('~');
+    questionId = parts[2] || parts[parts.length - 1];
+    console.log('[CourseraSkip] courseItemForumQuestionId:', courseItemForumQuestionId, '→ questionId:', questionId);
+  } catch (e) {
+    return { success: false, error: `Lỗi khi lấy Discussion Prompt: ${e.message}` };
+  }
+
+  if (!questionId) {
+    return { success: false, error: 'Không tách được questionId từ Discussion Prompt.' };
+  }
+
+  // Chờ 1s để tránh rate limit
+  await sleep(1000);
+
+  // 4. Đăng câu trả lời vào diễn đàn
+  const answerText = getRandomDiscussionResponse();
+  const answerBody = {
+    content: {
+      typeName: 'cml',
+      definition: {
+        dtdId: 'discussion/1',
+        value: `<co-content><text>${answerText}</text></co-content>`,
+      },
+    },
+    courseForumQuestionId: `${courseId}~${questionId}`,
+  };
+
+  const answerFields = 'content,forumQuestionId,parentForumAnswerId,state,creatorId,createdAt,order,upvoteCount,childAnswerCount,isFlagged,isUpvoted,courseItemForumQuestionId,parentCourseItemForumAnswerId';
+  const answerUrl = `${BASE}/api/onDemandCourseForumAnswers.v1/?fields=${answerFields}&includes=profiles,children,userId`;
+
+  console.log('[CourseraSkip] Posting discussion answer to:', answerUrl);
+
+  try {
+    const answerRes = await courseraFetch(answerUrl, {
+      method: 'POST',
+      headers: { 'x-csrf3-token': csrfToken },
+      body: JSON.stringify(answerBody),
+    });
+
+    console.log('[CourseraSkip] Post answer status:', answerRes.status);
+
+    if (answerRes.ok || answerRes.status === 201) {
+      return {
+        success: true,
+        message: '✅ Đã đăng câu trả lời thảo luận thành công! Coursera sẽ tự cập nhật tiến độ bài học.',
+      };
+    }
+
+    if (answerRes.status === 429) {
+      return { success: false, error: 'Bị giới hạn tốc độ (Rate Limit) của Coursera. Vui lòng thử lại sau vài phút.' };
+    }
+
+    const errBody = await answerRes.text().catch(() => '');
+    return { success: false, error: `Lỗi ${answerRes.status} khi đăng trả lời. ${errBody.slice(0, 120)}` };
+  } catch (e) {
+    return { success: false, error: `Lỗi kết nối khi đăng trả lời: ${e.message}` };
+  }
+}
+

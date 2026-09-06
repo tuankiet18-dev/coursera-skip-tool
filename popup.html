@@ -331,6 +331,15 @@
       background: rgba(255, 255, 255, 0.1);
     }
 
+    .btn-discuss {
+      background: linear-gradient(135deg, #0ea5e9 0%, #0284c7 100%);
+      box-shadow: 0 2px 10px rgba(14, 165, 233, 0.2);
+    }
+    .btn-discuss:hover:not(:disabled) {
+      transform: translateY(-1px);
+      box-shadow: 0 4px 14px rgba(14, 165, 233, 0.38);
+    }
+
     .spinner {
       display: none;
       width: 14px;
@@ -561,6 +570,12 @@
         <span class="btn-icon">👥</span>
         <div class="spinner"></div>
         <span class="btn-text" id="txt-btn-auto-review">Auto Grade Peer Review</span>
+      </button>
+
+      <button id="btn-auto-discussion" class="btn btn-discuss" style="display: none;">
+        <span class="btn-icon">💬</span>
+        <div class="spinner"></div>
+        <span class="btn-text" id="txt-btn-auto-discussion">Auto Post Discussion</span>
       </button>
     </div>
 

@@ -15,10 +15,13 @@ const I18N = {
     btnSkipCurrent: 'Complete This Lesson',
     btnSkipAll: 'Complete Entire Course',
     btnAutoReview: 'Auto Grade Peer Review',
+    btnAutoDiscussion: 'Auto Post Discussion',
     processingCurrent: 'Completing...',
     processingReview: 'Grading peer review...',
+    processingDiscussion: 'Posting discussion...',
     successCurrent: '✅ Lesson completed! Reloading...',
-    successReview: '✅ Peer review submitted! Reloading...',
+    successReview: '✅ Peer review graded!',
+    successDiscussion: '✅ Discussion posted successfully!',
     startingBulk: 'Starting automation...',
     fetchingCurriculum: 'Loading course lessons...',
     processingBulk: 'Processing: {current} / {total}',
@@ -44,10 +47,13 @@ const I18N = {
     btnSkipCurrent: 'Hoàn thành bài hiện tại',
     btnSkipAll: 'Hoàn thành toàn bộ khóa học',
     btnAutoReview: 'Tự động chấm bài bạn học',
+    btnAutoDiscussion: 'Tự động đăng thảo luận',
     processingCurrent: 'Đang xử lý...',
     processingReview: 'Đang tự động chấm bài...',
+    processingDiscussion: 'Đang đăng câu trả lời...',
     successCurrent: '✅ Đã hoàn thành! Đang tải lại trang...',
-    successReview: '✅ Đã chấm xong bài bạn học! Đang tải lại...',
+    successReview: '✅ Đã chấm xong bài bạn học!',
+    successDiscussion: '✅ Đã đăng thảo luận thành công!',
     startingBulk: 'Đang bắt đầu...',
     fetchingCurriculum: 'Đang tải danh sách bài học...',
     processingBulk: 'Đang xử lý: {current} / {total}',
@@ -114,6 +120,11 @@ function updateUILanguage() {
   const autoReviewBtn = document.getElementById('btn-auto-review');
   if (autoReviewBtn && !autoReviewBtn.classList.contains('loading')) {
     document.getElementById('txt-btn-auto-review').textContent = t('btnAutoReview');
+  }
+
+  const autoDiscussionBtn = document.getElementById('btn-auto-discussion');
+  if (autoDiscussionBtn && !autoDiscussionBtn.classList.contains('loading')) {
+    document.getElementById('txt-btn-auto-discussion').textContent = t('btnAutoDiscussion');
   }
 
   if (currentContext && currentContext.itemType) {
@@ -186,7 +197,7 @@ async function loadContext() {
   hideAlert();
   try {
     const { tab, isCoursera } = await getActiveCourseraTab();
-    
+
     const guideBtnText = document.getElementById('txt-guide-action-btn');
     if (guideBtnText) {
       guideBtnText.textContent = isCoursera ? t('guideActionBtnTab') : t('guideActionBtnOpen');
@@ -208,11 +219,26 @@ async function loadContext() {
     document.getElementById('lbl-course').textContent = formatCourseSlug(context.courseSlug);
     renderTypePill(context.itemType);
 
-    // Switch buttons based on whether this is a peer review
+    // Switch buttons based on lesson type
     const isPeer = context.itemType === 'peer';
     document.getElementById('btn-skip-current').style.display = isPeer ? 'none' : 'flex';
     document.getElementById('btn-skip-all').style.display = isPeer ? 'none' : 'flex';
     document.getElementById('btn-auto-review').style.display = isPeer ? 'flex' : 'none';
+
+    // Always hide discussion button first, then probe for discussion prompt
+    document.getElementById('btn-auto-discussion').style.display = 'none';
+
+    // For lecture and supplement pages, check if there's a Discussion Prompt section
+    if (!isPeer && (context.itemType === 'lecture' || context.itemType === 'supplement')) {
+      try {
+        const discussionCheck = await chrome.tabs.sendMessage(tab.id, { action: 'checkDiscussionPrompt' });
+        if (discussionCheck?.hasDiscussion) {
+          document.getElementById('btn-auto-discussion').style.display = 'flex';
+        }
+      } catch (_) {
+        // If content script can't respond, just skip — not critical
+      }
+    }
 
     return context;
   } catch (_) {
@@ -305,6 +331,31 @@ async function autoGradePeerReview() {
   }
 }
 
+async function autoPostDiscussion() {
+  hideAlert();
+  setLoading('btn-auto-discussion', 'txt-btn-auto-discussion', true, 'processingDiscussion');
+
+  try {
+    const { tab } = await getActiveCourseraTab();
+    if (!tab) throw new Error(t('notOnLesson'));
+
+    const result = await chrome.tabs.sendMessage(tab.id, { action: 'autoPostDiscussion' });
+    if (result && result.success) {
+      showAlert('success', result.message || t('successDiscussion'));
+      showRatingToast();
+      setTimeout(() => {
+        chrome.tabs.reload(tab.id);
+      }, 1500);
+    } else {
+      showAlert('error', result?.error || t('unknownError'));
+    }
+  } catch (error) {
+    showAlert('error', error.message || t('unknownError'));
+  } finally {
+    setLoading('btn-auto-discussion', 'txt-btn-auto-discussion', false, 'btnAutoDiscussion');
+  }
+}
+
 // Progress listener
 chrome.runtime.onMessage.addListener((message) => {
   if (message.action === 'progressUpdate') {
@@ -349,6 +400,7 @@ document.getElementById('btn-lang-toggle').addEventListener('click', toggleLangu
 document.getElementById('btn-skip-current').addEventListener('click', markCompleted);
 document.getElementById('btn-skip-all').addEventListener('click', markAllCompleted);
 document.getElementById('btn-auto-review').addEventListener('click', autoGradePeerReview);
+document.getElementById('btn-auto-discussion').addEventListener('click', autoPostDiscussion);
 
 document.getElementById('lnk-footer-rate').addEventListener('click', (e) => {
   e.preventDefault();

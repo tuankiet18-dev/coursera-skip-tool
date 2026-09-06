@@ -4,7 +4,7 @@
 </div>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-1.2.0-blue.svg" alt="Version">
+  <img src="https://img.shields.io/badge/version-1.3.0-blue.svg" alt="Version">
   <a href="https://chromewebstore.google.com/detail/coursera-skip-video-read/jjbgneddmjkolgmpamecbhfgjgdiajlf">
     <img src="https://img.shields.io/badge/Chrome_Web_Store-Install_1--Click-success?logo=googlechrome&logoColor=white" alt="Chrome Web Store">
   </a>
@@ -32,7 +32,8 @@ Unlike other versions circulating online that may contain harmful code (cookie s
 
 - **⚡ Complete Current Lesson:** Instantly mark the currently opened Coursera video lecture or reading material as completed.
 - **🚀 Complete Entire Course (Bulk):** Automatically detect, batch-process, and complete all video lectures and reading items in the course.
-- **👥 Auto Peer Review (New in v1.2.0):** 1-Click grading for peer-reviewed assignments. Automatically selects maximum rubric scores, inputs natural positive feedback comments, and submits reviews effortlessly.
+- **👥 Auto Peer Review (v1.2.0):** 1-Click grading for peer-reviewed assignments. Automatically selects maximum rubric scores, inputs natural positive feedback comments, and highlights submit button.
+- **💬 Auto Discussion Prompt (New in v1.3.0):** Automatically detects mandatory discussion prompts embedded in lectures and posts insightful, natural discussion responses via the official Coursera forum API to reach 100% lesson progress.
 - **⭐ Smart Review & Rating:** Easily support the project with a 5-star rating directly from within the extension.
 - **🌐 Internationalization (i18n):** Full support for **English** and **Vietnamese (Tiếng Việt)** with a 1-click header switcher `[🌐 EN | VI]`.
 - **✨ Clean & Friendly UI/UX:** Streamlined dark theme with zero clutter, clean course name formatting, and an intuitive 3-step guide screen.
