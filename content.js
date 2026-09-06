@@ -62,18 +62,30 @@ function getCourseContext() {
   }
 
   // 2. Peer review URLs — Coursera uses several patterns:
+  //    /learn/{slug}/peer/{itemId}
+  //    /learn/{slug}/peer/{itemId}/give-feedback
+  //    /learn/{slug}/peer/{itemId}/review
   //    /learn/{slug}/peer-review/{itemId}
-  //    /learn/{slug}/peer-review/{itemId}/give-feedback
-  //    /learn/{slug}/peer-review/{itemId}/review
+  //    /learn/{slug}/peer-assignment/{itemId}
   //    /learn/{slug}/submit-revisions/{itemId}  (resubmit review)
-  const peerPatterns = [
-    /\/learn\/([^/]+)\/peer-review\/([^/?#]+)/i,
-    /\/learn\/([^/]+)\/submit-revisions\/([^/?#]+)/i,
-  ];
-  for (const pattern of peerPatterns) {
-    const m = href.match(pattern);
-    if (m) {
-      return { courseSlug: m[1], itemType: 'peer', itemId: m[2] };
+  //    /learn/{slug}/assignment-submission/{itemId}
+  const peerMatch = href.match(
+    /\/learn\/([^/]+)\/(?:peer-review|peer|peer-assignment|submit-revisions|assignment-submission)\/([^/?#]+)/i
+  );
+  if (peerMatch) {
+    return { courseSlug: peerMatch[1], itemType: 'peer', itemId: peerMatch[2] };
+  }
+
+  // DOM heuristic: If the page has Coursera peer review rubric items or review forms in DOM
+  const hasRubric = Boolean(
+    document.querySelector(
+      '.rc-FormPart, .c-peer-review-rubric-item, fieldset.c-peer-review-rubric, div[data-testid*="rubric-criterion"], .c-peer-review, div[data-testid*="peer-review"], div[data-testid*="give-feedback"]'
+    )
+  );
+  if (hasRubric) {
+    const slugMatch = href.match(/\/learn\/([^/?#]+)/i);
+    if (slugMatch) {
+      return { courseSlug: slugMatch[1], itemType: 'peer', itemId: 'review' };
     }
   }
 
@@ -1552,6 +1564,14 @@ function initFloatingWidget() {
       transform: translateY(-1px);
       box-shadow: 0 4px 12px rgba(14, 165, 233, 0.4);
     }
+    .cs-btn-peer {
+      background: linear-gradient(135deg, #a855f7 0%, #ec4899 100%);
+      box-shadow: 0 2px 8px rgba(168, 85, 247, 0.25);
+    }
+    .cs-btn-peer:hover:not(:disabled) {
+      transform: translateY(-1px);
+      box-shadow: 0 4px 12px rgba(236, 72, 153, 0.45);
+    }
 
     /* Progress UI */
     .cs-progress-wrap {
@@ -1664,7 +1684,7 @@ function initFloatingWidget() {
             <span class="cs-btn-text" id="cs-txt-bulk-disc">Hoàn thành toàn bộ Discussion</span>
           </button>
 
-          <button class="cs-btn cs-btn-magic" id="cs-btn-peer" style="display: none;">
+          <button class="cs-btn cs-btn-peer" id="cs-btn-peer" style="display: none;">
             <span class="cs-btn-icon">👥</span>
             <div class="cs-spinner"></div>
             <span class="cs-btn-text" id="cs-txt-peer">Tự động chấm bài bạn học</span>
