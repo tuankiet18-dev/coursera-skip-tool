@@ -83,6 +83,16 @@ function getCourseContext() {
     return { courseSlug: discMatch[1], itemType: 'discussionPrompt', itemId: discMatch[2] };
   }
 
+  // 4. Any course page (/learn/{courseSlug}/...) e.g. home, week overview, syllabus
+  const courseMatch = href.match(/\/learn\/([^/?#]+)/i);
+  if (courseMatch && courseMatch[1]) {
+    const slug = courseMatch[1];
+    const excludedSlugs = ['my-learning', 'home', 'search', 'browse', 'programs', 'certificates', 'degrees'];
+    if (!excludedSlugs.includes(slug.toLowerCase())) {
+      return { courseSlug: slug, itemType: 'course', itemId: null };
+    }
+  }
+
   return null;
 }
 
@@ -346,10 +356,31 @@ async function markSupplementCompleted(userId, courseId, courseSlug, itemId) {
 
 async function markCurrentItemCompleted() {
   const context = getCourseContext();
-  if (!context) return { success: false, error: 'Không nhận diện được trang. Hãy mở đúng trang bài học (/learn/.../lecture/... hoặc /supplement/...).' };
+  if (!context || !context.courseSlug) {
+    return { success: false, error: 'Không nhận diện được khóa học. Hãy mở một trang khóa học Coursera.' };
+  }
 
   const { courseSlug, itemType, itemId } = context;
+
+  // Nếu đang ở trang tổng quan khóa học (không ở bài học cụ thể)
+  if (!itemId) {
+    return {
+      success: false,
+      error: 'Bạn đang ở trang tổng quan khóa học. Hãy mở 1 bài học cụ thể (Video, Reading, Discussion) để hoàn thành bài lẻ, hoặc bấm 1 trong 2 nút hoàn thành toàn bộ bên dưới!'
+    };
+  }
+
   console.log(`[CourseraSkip] ▶ type=${itemType} | slug=${courseSlug} | item=${itemId}`);
+
+  // Nếu bài hiện tại là Discussion Prompt
+  if (itemType === 'discussionPrompt') {
+    return await autoPostDiscussion();
+  }
+
+  // Nếu bài hiện tại là Peer Review
+  if (itemType === 'peer') {
+    return await autoGradePeerReview();
+  }
 
   const courseId = await getCourseId(courseSlug);
   if (!courseId) return { success: false, error: 'Không lấy được courseId từ API. Coursera có thể đã đổi định dạng API.' };
@@ -371,7 +402,7 @@ async function markCurrentItemCompleted() {
     return { ...result, message: result.success ? `✅ Bài đọc đã hoàn thành!${result.fallback ? ' (fallback)' : ''}` : `❌ ${result.error}`, itemType, courseId, userId, itemId };
   }
 
-  return { success: false, message: `⚠️ Loại "${itemType}" chưa được hỗ trợ.`, itemType };
+  return { success: false, error: `⚠️ Loại bài "${itemType}" chưa được hỗ trợ hoàn thành tự động.` };
 }
 
 // ===== BULK COMPLETION =====
@@ -460,7 +491,119 @@ async function markAllItemsCompleted() {
     }
   }
 
-  chrome.runtime.sendMessage({ action: 'progressUpdate', status: 'completed', current: total, total, message: `✅ Hoàn thành toàn bộ ${total} bài học!` });
+  chrome.runtime.sendMessage({ action: 'progressUpdate', status: 'completed', current: total, total, message: `✅ Hoàn thành toàn bộ ${total} bài học Video & Reading!` });
+}
+
+async function markAllDiscussionsCompleted() {
+  const context = getCourseContext();
+  if (!context || !context.courseSlug) {
+    chrome.runtime.sendMessage({ action: 'progressUpdate', status: 'error', code: 'NO_CONTEXT', message: 'Không nhận diện được khóa học. Hãy mở trang khóa học Coursera.' });
+    return;
+  }
+
+  const { courseSlug } = context;
+  chrome.runtime.sendMessage({ action: 'progressUpdate', status: 'loading', code: 'FETCHING_CURRICULUM', message: 'Đang tải danh sách bài thảo luận...' });
+
+  const material = await getAllCourseItems(courseSlug);
+  if (!material || !material.linked || !material.linked['onDemandCourseMaterialItems.v2']) {
+    chrome.runtime.sendMessage({ action: 'progressUpdate', status: 'error', code: 'FETCH_FAILED', message: 'Không lấy được giáo trình khóa học.' });
+    return;
+  }
+
+  // Lọc tất cả các bài Discussion Prompt trong toàn bộ khóa học
+  const discussionItems = material.linked['onDemandCourseMaterialItems.v2'].filter(
+    (f) => f.contentSummary && f.contentSummary.typeName && f.contentSummary.typeName.includes('discussionPrompt')
+  );
+
+  const total = discussionItems.length;
+  if (total === 0) {
+    chrome.runtime.sendMessage({ action: 'progressUpdate', status: 'error', code: 'NO_ITEMS', message: 'Khóa học này không có bài thảo luận (Discussion Prompt) nào!' });
+    return;
+  }
+
+  const courseId = material.elements?.[0]?.id || await getCourseId(courseSlug);
+  if (!courseId) {
+    chrome.runtime.sendMessage({ action: 'progressUpdate', status: 'error', code: 'NO_COURSE_ID', message: 'Không lấy được ID khóa học.' });
+    return;
+  }
+
+  const userId = await getUserId(courseId);
+  if (!userId) {
+    chrome.runtime.sendMessage({ action: 'progressUpdate', status: 'error', code: 'NO_USER_ID', message: 'Không lấy được User ID. Vui lòng đăng nhập Coursera.' });
+    return;
+  }
+
+  const csrfToken = getCsrfToken();
+  chrome.runtime.sendMessage({ action: 'progressUpdate', status: 'starting', current: 0, total, message: `Bắt đầu xử lý ${total} bài thảo luận...` });
+
+  let completed = 0;
+  for (let i = 0; i < total; i++) {
+    const item = discussionItems[i];
+    try {
+      // 1. Lấy prompt question ID
+      const discussionFields = 'onDemandDiscussionPromptQuestions.v1(content,creatorId,createdAt,forumId,sessionId),promptType,question';
+      const promptUrl = `${BASE}/api/onDemandDiscussionPrompts.v1/${userId}~${courseId}~${item.id}?fields=${discussionFields}&includes=question`;
+
+      const promptRes = await courseraFetch(promptUrl);
+      if (promptRes.ok) {
+        const promptData = await promptRes.json();
+        const courseItemForumQuestionId = promptData?.elements?.[0]?.promptType?.courseItemForumQuestionId
+          ?? promptData?.elements?.[0]?.question?.courseItemForumQuestionId;
+
+        if (courseItemForumQuestionId) {
+          const parts = courseItemForumQuestionId.split('~');
+          const questionId = parts[2] || parts[parts.length - 1];
+
+          if (questionId) {
+            const answerText = getRandomDiscussionResponse();
+            const answerBody = {
+              content: {
+                typeName: 'cml',
+                definition: {
+                  dtdId: 'discussion/1',
+                  value: `<co-content><text>${answerText}</text></co-content>`,
+                },
+              },
+              courseForumQuestionId: `${courseId}~${questionId}`,
+            };
+
+            const answerFields = 'content,forumQuestionId,parentForumAnswerId,state,creatorId,createdAt,order,courseItemForumQuestionId';
+            const answerUrl = `${BASE}/api/onDemandCourseForumAnswers.v1/?fields=${answerFields}&includes=profiles,children,userId`;
+
+            await courseraFetch(answerUrl, {
+              method: 'POST',
+              headers: { 'x-csrf3-token': csrfToken },
+              body: JSON.stringify(answerBody),
+            });
+          }
+        }
+      }
+    } catch (e) {
+      console.log('[CourseraSkip] Error posting discussion for item', item.id, e);
+    }
+
+    completed++;
+    chrome.runtime.sendMessage({
+      action: 'progressUpdate',
+      status: 'progress',
+      current: completed,
+      total,
+      message: `Đang đăng thảo luận: ${completed} / ${total} (${item.name || 'Discussion'})`
+    });
+
+    // Nghỉ 1.8s giữa các bài để tôn trọng rate limit của Coursera
+    if (completed < total) {
+      await sleep(1800);
+    }
+  }
+
+  chrome.runtime.sendMessage({
+    action: 'progressUpdate',
+    status: 'completed',
+    current: total,
+    total,
+    message: `✅ Hoàn thành toàn bộ ${total} bài thảo luận trong khóa học!`
+  });
 }
 
 // ===== AUTO PEER REVIEW =====
@@ -659,6 +802,11 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message.action === 'markAllCompleted') {
     markAllItemsCompleted();
     sendResponse({ success: true, message: "Đã bắt đầu chạy ngầm." });
+    return true;
+  }
+  if (message.action === 'markAllDiscussionsCompleted') {
+    markAllDiscussionsCompleted();
+    sendResponse({ success: true, message: "Đã bắt đầu xử lý toàn bộ thảo luận." });
     return true;
   }
   if (message.action === 'autoGradePeerReview') {

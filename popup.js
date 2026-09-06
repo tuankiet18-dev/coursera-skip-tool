@@ -12,10 +12,10 @@ const I18N = {
     step3: 'Click Complete in this extension',
     guideActionBtnTab: '🔄 Refresh Detection',
     guideActionBtnOpen: '🚀 Open Coursera',
-    btnSkipCurrent: 'Complete This Lesson',
-    btnSkipAll: 'Complete Entire Course',
+    btnSkipCurrent: 'Complete Current Lesson',
+    btnSkipAll: 'Complete All Video & Reading',
+    btnSkipAllDiscussions: 'Complete All Discussions',
     btnAutoReview: 'Auto Grade Peer Review',
-    btnAutoDiscussion: 'Auto Post Discussion',
     processingCurrent: 'Completing...',
     processingReview: 'Grading peer review...',
     processingDiscussion: 'Posting discussion...',
@@ -25,7 +25,7 @@ const I18N = {
     startingBulk: 'Starting automation...',
     fetchingCurriculum: 'Loading course lessons...',
     processingBulk: 'Processing: {current} / {total}',
-    completedBulk: '✅ Done! All {total} lessons completed.',
+    completedBulk: '✅ Done! All {total} items completed.',
     ratingLabel: '🎉 Completed!',
     ratingMsg: 'Saved your time? Give us 5 stars on Chrome Web Store!',
     btnRate: '⭐ Rate 5 Stars',
@@ -45,9 +45,9 @@ const I18N = {
     guideActionBtnTab: '🔄 Nhận diện lại',
     guideActionBtnOpen: '🚀 Mở Coursera',
     btnSkipCurrent: 'Hoàn thành bài hiện tại',
-    btnSkipAll: 'Hoàn thành toàn bộ khóa học',
+    btnSkipAll: 'Hoàn thành toàn bộ Video & Reading',
+    btnSkipAllDiscussions: 'Hoàn thành toàn bộ Discussion',
     btnAutoReview: 'Tự động chấm bài bạn học',
-    btnAutoDiscussion: 'Tự động đăng thảo luận',
     processingCurrent: 'Đang xử lý...',
     processingReview: 'Đang tự động chấm bài...',
     processingDiscussion: 'Đang đăng câu trả lời...',
@@ -68,6 +68,7 @@ const I18N = {
 };
 
 const TYPE_CONFIG = {
+  course: { icon: '🎓', en: 'Course Overview', vi: 'Trang khóa học' },
   lecture: { icon: '🎬', en: 'Video Lecture', vi: 'Bài giảng Video' },
   supplement: { icon: '📖', en: 'Reading Material', vi: 'Tài liệu Đọc' },
   quiz: { icon: '📝', en: 'Quiz Assessment', vi: 'Bài kiểm tra (Quiz)' },
@@ -124,9 +125,9 @@ function updateUILanguage() {
     document.getElementById('txt-btn-auto-review').textContent = t('btnAutoReview');
   }
 
-  const autoDiscussionBtn = document.getElementById('btn-auto-discussion');
-  if (autoDiscussionBtn && !autoDiscussionBtn.classList.contains('loading')) {
-    document.getElementById('txt-btn-auto-discussion').textContent = t('btnAutoDiscussion');
+  const skipAllDiscBtn = document.getElementById('btn-skip-all-discussions');
+  if (skipAllDiscBtn && !skipAllDiscBtn.classList.contains('loading')) {
+    document.getElementById('txt-btn-skip-all-discussions').textContent = t('btnSkipAllDiscussions');
   }
 
   if (currentContext && currentContext.itemType) {
@@ -221,32 +222,23 @@ async function loadContext() {
     document.getElementById('lbl-course').textContent = formatCourseSlug(context.courseSlug);
     renderTypePill(context.itemType);
 
-    // Switch buttons based on lesson type
+    // Switch buttons based on context
     const isPeer = context.itemType === 'peer';
-    const isDiscussion = context.itemType === 'discussionPrompt';
 
-    document.getElementById('btn-skip-current').style.display = (isPeer || isDiscussion) ? 'none' : 'flex';
-    document.getElementById('btn-skip-all').style.display = isPeer ? 'none' : 'flex';
-    document.getElementById('btn-auto-review').style.display = isPeer ? 'flex' : 'none';
-
-    // Show discussion button if dedicated discussion page OR embedded section
-    if (isDiscussion) {
-      document.getElementById('btn-auto-discussion').style.display = 'flex';
+    // 1. Hoàn thành bài hiện tại (hoặc nút Chấm bài nếu là Peer Review)
+    if (isPeer) {
+      document.getElementById('btn-auto-review').style.display = 'flex';
+      document.getElementById('btn-skip-current').style.display = 'none';
     } else {
-      document.getElementById('btn-auto-discussion').style.display = 'none';
-
-      // For lecture and supplement pages, check if there's an embedded Discussion Prompt section
-      if (!isPeer && (context.itemType === 'lecture' || context.itemType === 'supplement')) {
-        try {
-          const discussionCheck = await chrome.tabs.sendMessage(tab.id, { action: 'checkDiscussionPrompt' });
-          if (discussionCheck?.hasDiscussion) {
-            document.getElementById('btn-auto-discussion').style.display = 'flex';
-          }
-        } catch (_) {
-          // If content script can't respond, just skip — not critical
-        }
-      }
+      document.getElementById('btn-auto-review').style.display = 'none';
+      document.getElementById('btn-skip-current').style.display = 'flex';
     }
+
+    // 2. Hoàn thành toàn bộ Video & Reading (luôn hiển thị trong khóa học)
+    document.getElementById('btn-skip-all').style.display = 'flex';
+
+    // 3. Hoàn thành toàn bộ Discussion (luôn hiển thị trong khóa học)
+    document.getElementById('btn-skip-all-discussions').style.display = 'flex';
 
     return context;
   } catch (_) {
@@ -339,31 +331,32 @@ async function autoGradePeerReview() {
   }
 }
 
-async function autoPostDiscussion() {
+async function markAllDiscussionsCompleted() {
   hideAlert();
-  setLoading('btn-auto-discussion', 'txt-btn-auto-discussion', true, 'processingDiscussion');
+  setLoading('btn-skip-all-discussions', 'txt-btn-skip-all-discussions', true, 'startingBulk');
+
+  const progContainer = document.getElementById('bulk-progress-container');
+  const progMsg = document.getElementById('bulk-progress-msg');
+  const progBar = document.getElementById('bulk-progress-bar');
+  const progPct = document.getElementById('bulk-progress-pct');
+
+  progContainer.style.display = 'block';
+  progMsg.textContent = t('startingBulk');
+  progBar.style.width = '0%';
+  progPct.textContent = '0%';
 
   try {
     const { tab } = await getActiveCourseraTab();
     if (!tab) throw new Error(t('notOnLesson'));
 
-    const result = await chrome.tabs.sendMessage(tab.id, { action: 'autoPostDiscussion' });
-    if (result && result.success) {
-      showAlert('success', result.message || t('successDiscussion'));
-      showRatingToast();
-      // Chỉ tải lại trang khi bài đã thực sự được nộp thành công
-      if (result.submitted !== false) {
-        setTimeout(() => {
-          chrome.tabs.reload(tab.id);
-        }, 2000);
-      }
-    } else {
-      showAlert('error', result?.error || t('unknownError'));
+    const result = await chrome.tabs.sendMessage(tab.id, { action: 'markAllDiscussionsCompleted' });
+    if (!result || !result.success) {
+      throw new Error(result?.error || t('unknownError'));
     }
   } catch (error) {
     showAlert('error', error.message || t('unknownError'));
-  } finally {
-    setLoading('btn-auto-discussion', 'txt-btn-auto-discussion', false, 'btnAutoDiscussion');
+    setLoading('btn-skip-all-discussions', 'txt-btn-skip-all-discussions', false, 'btnSkipAllDiscussions');
+    progContainer.style.display = 'none';
   }
 }
 
@@ -376,20 +369,21 @@ chrome.runtime.onMessage.addListener((message) => {
     const progPct = document.getElementById('bulk-progress-pct');
 
     if (message.status === 'loading') {
-      progMsg.textContent = t('fetchingCurriculum');
+      progMsg.textContent = message.message || t('fetchingCurriculum');
     } else if (message.status === 'starting' || message.status === 'progress') {
       const current = message.current || 0;
       const total = message.total || 1;
       const pct = Math.min(100, Math.round((current / total) * 100));
       progBar.style.width = `${pct}%`;
       progPct.textContent = `${pct}%`;
-      progMsg.textContent = t('processingBulk', { current, total });
+      progMsg.textContent = message.message || t('processingBulk', { current, total });
     } else if (message.status === 'completed') {
       const total = message.total || message.current || '';
       progBar.style.width = '100%';
       progPct.textContent = '100%';
-      progMsg.textContent = t('completedBulk', { total });
+      progMsg.textContent = message.message || t('completedBulk', { total });
       setLoading('btn-skip-all', 'txt-btn-skip-all', false, 'btnSkipAll');
+      setLoading('btn-skip-all-discussions', 'txt-btn-skip-all-discussions', false, 'btnSkipAllDiscussions');
       showRatingToast();
 
       setTimeout(async () => {
@@ -399,6 +393,7 @@ chrome.runtime.onMessage.addListener((message) => {
     } else if (message.status === 'error') {
       showAlert('error', message.message || t('unknownError'));
       setLoading('btn-skip-all', 'txt-btn-skip-all', false, 'btnSkipAll');
+      setLoading('btn-skip-all-discussions', 'txt-btn-skip-all-discussions', false, 'btnSkipAllDiscussions');
       progContainer.style.display = 'none';
     } else if (typeof message.message === 'string') {
       progMsg.textContent = message.message;
@@ -410,8 +405,8 @@ chrome.runtime.onMessage.addListener((message) => {
 document.getElementById('btn-lang-toggle').addEventListener('click', toggleLanguage);
 document.getElementById('btn-skip-current').addEventListener('click', markCompleted);
 document.getElementById('btn-skip-all').addEventListener('click', markAllCompleted);
+document.getElementById('btn-skip-all-discussions').addEventListener('click', markAllDiscussionsCompleted);
 document.getElementById('btn-auto-review').addEventListener('click', autoGradePeerReview);
-document.getElementById('btn-auto-discussion').addEventListener('click', autoPostDiscussion);
 
 document.getElementById('lnk-footer-rate').addEventListener('click', (e) => {
   e.preventDefault();
