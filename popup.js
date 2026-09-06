@@ -291,11 +291,10 @@ async function autoGradePeerReview() {
 
     const result = await chrome.tabs.sendMessage(tab.id, { action: 'autoGradePeerReview' });
     if (result && result.success) {
+      // Show the result message from content.js (includes count of filled items)
+      // Do NOT auto-reload — user must review the form and click Submit themselves
       showAlert('success', result.message || t('successReview'));
       showRatingToast();
-      setTimeout(() => {
-        chrome.tabs.reload(tab.id);
-      }, 1500);
     } else {
       showAlert('error', result?.error || t('unknownError'));
     }

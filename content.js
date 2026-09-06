@@ -50,24 +50,29 @@ async function courseraFetch(url, options = {}) {
 
 function getCourseContext() {
   const href = window.location.href;
-  
-  // 1. Standard lesson types
+
+  // 1. Standard lesson types (lecture, supplement, quiz, programming)
   const match = href.match(
-    /\/learn\/([^/]+)\/(lecture|supplement|quiz|programming|peer)\/([^/?#]+)/
+    /\/learn\/([^/]+)\/(lecture|supplement|quiz|programming)\/([^/?#]+)/
   );
   if (match) {
     return { courseSlug: match[1], itemType: match[2], itemId: match[3] };
   }
 
-  // 2. Peer review URLs: /learn/{courseSlug}/peer/{peerId}/review/... or general /review/
-  const peerMatch = href.match(/\/learn\/([^/]+)\/(?:.*\/)?peer\/([^/?#]+)/);
-  if (peerMatch || href.includes('/review/')) {
-    const slugMatch = href.match(/\/learn\/([^/]+)/);
-    return {
-      courseSlug: slugMatch ? slugMatch[1] : 'coursera-course',
-      itemType: 'peer',
-      itemId: peerMatch ? peerMatch[2] : 'peer-review'
-    };
+  // 2. Peer review URLs — Coursera uses several patterns:
+  //    /learn/{slug}/peer-review/{itemId}
+  //    /learn/{slug}/peer-review/{itemId}/give-feedback
+  //    /learn/{slug}/peer-review/{itemId}/review
+  //    /learn/{slug}/submit-revisions/{itemId}  (resubmit review)
+  const peerPatterns = [
+    /\/learn\/([^/]+)\/peer-review\/([^/?#]+)/,
+    /\/learn\/([^/]+)\/submit-revisions\/([^/?#]+)/,
+  ];
+  for (const pattern of peerPatterns) {
+    const m = href.match(pattern);
+    if (m) {
+      return { courseSlug: m[1], itemType: 'peer', itemId: m[2] };
+    }
   }
 
   return null;
@@ -466,15 +471,38 @@ function getRandomReviewComment() {
 
 function fillTextInput(el, text) {
   if (!el) return;
+
+  // Case 1: contenteditable div (Coursera modern UI)
+  if (el.getAttribute('contenteditable') !== null || el.getAttribute('role') === 'textbox') {
+    el.focus();
+    el.textContent = '';
+    // Use execCommand to set text so React's synthetic events fire
+    try {
+      document.execCommand('selectAll', false, null);
+      document.execCommand('insertText', false, text);
+    } catch (_) {
+      el.textContent = text;
+    }
+    el.dispatchEvent(new Event('input', { bubbles: true }));
+    el.dispatchEvent(new Event('change', { bubbles: true }));
+    return;
+  }
+
+  // Case 2: standard <textarea> or <input>
   el.focus();
   el.click();
-  
   try {
     document.execCommand('selectAll', false, null);
     document.execCommand('insertText', false, text);
   } catch (_) {}
-
-  el.value = text;
+  // Fallback: set value directly and fire events (for non-React forms)
+  const nativeInputSetter = Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, 'value')?.set
+    || Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value')?.set;
+  if (nativeInputSetter) {
+    nativeInputSetter.call(el, text);
+  } else {
+    el.value = text;
+  }
   el.dispatchEvent(new Event('input', { bubbles: true }));
   el.dispatchEvent(new Event('change', { bubbles: true }));
 }
@@ -482,79 +510,121 @@ function fillTextInput(el, text) {
 async function autoGradePeerReview() {
   console.log('[CourseraSkip] Starting Auto Peer Review...');
 
-  // 1. Quét các tiêu chí rubric
-  let rubricParts = document.querySelectorAll('.rc-FormPart, div[data-testid*="rubric"], .c-peer-review-rubric-item, fieldset, [role="radiogroup"]');
   let optionsSelected = 0;
   let textareasFilled = 0;
 
-  if (rubricParts && rubricParts.length > 0) {
-    for (const part of rubricParts) {
-      // Tìm các lựa chọn radio
-      const radios = part.querySelectorAll('input[type="radio"], .cds-checkboxAndRadio-label, [role="radio"]');
-      if (radios.length > 0) {
-        let bestRadio = radios[radios.length - 1]; // Mặc định chọn mức điểm cao nhất ở cuối
-        let maxScore = -1;
+  // 1. Find rubric sections using Coursera-specific selectors (tight scope, avoid nav/header)
+  // Coursera uses .rc-FormPart per rubric criterion, or fieldset inside .c-peer-review-rubric
+  const rubricSelectors = [
+    '.rc-FormPart',
+    '.c-peer-review-rubric-item',
+    'fieldset.c-peer-review-rubric',
+    'div[data-testid*="rubric-criterion"]',
+    'div[data-testid*="rubric-item"]',
+  ];
 
-        radios.forEach((r) => {
-          const labelText = r.closest('label')?.textContent || r.textContent || '';
-          const match = labelText.match(/(\d+)\s*(?:points?|pts?|điểm)/i);
-          if (match) {
-            const score = parseInt(match[1], 10);
-            if (score > maxScore) {
-              maxScore = score;
-              bestRadio = r;
-            }
-          }
-        });
+  let rubricParts = [];
+  for (const sel of rubricSelectors) {
+    const found = document.querySelectorAll(sel);
+    if (found.length > 0) {
+      rubricParts = Array.from(found);
+      break;
+    }
+  }
 
+  // Fallback: use radiogroups only if inside a peer-review container
+  if (rubricParts.length === 0) {
+    const peerContainer = document.querySelector(
+      '.c-peer-review, [data-testid*="peer-review"], .rc-PeerReview, main'
+    );
+    if (peerContainer) {
+      rubricParts = Array.from(peerContainer.querySelectorAll('[role="radiogroup"], fieldset'));
+    }
+  }
+
+  for (const part of rubricParts) {
+    // Select the radio with the highest score
+    const radios = Array.from(part.querySelectorAll('input[type="radio"]'));
+    if (radios.length > 0) {
+      let bestRadio = radios[radios.length - 1]; // default: last option (usually highest)
+      let maxScore = -1;
+
+      radios.forEach((r) => {
+        // Try to find associated label text to parse score
+        const labelEl = r.closest('label') || document.querySelector(`label[for="${r.id}"]`);
+        const labelText = labelEl?.textContent || r.value || '';
+        const scoreMatch = labelText.match(/(\d+)\s*(?:points?|pts?|điểm)/i);
+        if (scoreMatch) {
+          const score = parseInt(scoreMatch[1], 10);
+          if (score > maxScore) { maxScore = score; bestRadio = r; }
+        }
+      });
+
+      if (!bestRadio.checked) {
         bestRadio.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        await sleep(150);
         bestRadio.click();
         bestRadio.dispatchEvent(new Event('change', { bubbles: true }));
         optionsSelected++;
       }
+    }
 
-      // Điền nhận xét nếu có textarea trong tiêu chí này
-      const textareas = part.querySelectorAll('textarea, .c-peer-review-submit-textarea-input-field, div[data-testid*="multi-line-input-field"]');
-      for (const ta of textareas) {
-        if (!ta.value || ta.value.trim().length === 0) {
-          fillTextInput(ta, getRandomReviewComment());
-          textareasFilled++;
-        }
+    // Fill feedback textareas/contenteditable within this criterion
+    const feedbackEls = Array.from(part.querySelectorAll(
+      'textarea, input[type="text"], div[contenteditable="true"], div[role="textbox"]'
+    ));
+    for (const el of feedbackEls) {
+      const currentText = el.value ?? el.textContent ?? '';
+      if (currentText.trim().length === 0) {
+        fillTextInput(el, getRandomReviewComment());
+        textareasFilled++;
+        await sleep(100);
       }
     }
   }
 
-  // Quét thêm bất kỳ ô textarea nào còn trống trên trang
-  const allTextareas = document.querySelectorAll('textarea, .c-peer-review-submit-textarea-input-field, div[data-testid*="multi-line-input-field"]');
-  for (const ta of allTextareas) {
-    if (!ta.value || ta.value.trim().length === 0) {
-      fillTextInput(ta, getRandomReviewComment());
+  // 2. Also catch any remaining empty feedback fields outside rubric parts
+  const allFeedbackEls = Array.from(document.querySelectorAll(
+    'textarea[placeholder], div[contenteditable="true"][data-testid*="feedback"], div[contenteditable="true"][data-testid*="comment"], .c-peer-review-submit-textarea-input-field'
+  ));
+  for (const el of allFeedbackEls) {
+    const currentText = el.value ?? el.textContent ?? '';
+    if (currentText.trim().length === 0) {
+      fillTextInput(el, getRandomReviewComment());
       textareasFilled++;
+      await sleep(100);
     }
   }
 
   await sleep(600);
 
-  // 2. Tìm và bấm nút Nộp bài chấm (Submit Review)
-  const submitBtn = document.querySelector('.rc-FormSubmit button, button[data-testid*="submit-review"], button[type="submit"]') ||
-    Array.from(document.querySelectorAll('button')).find(b => {
+  // 3. Find Submit Review button — scroll to it & highlight, but DON'T auto-click
+  //    User must confirm and click manually to avoid accidental irreversible submission
+  const submitBtn =
+    document.querySelector('.rc-FormSubmit button[type="submit"]') ||
+    document.querySelector('button[data-testid*="submit-review"]') ||
+    Array.from(document.querySelectorAll('button[type="submit"]')).find(b => {
       const txt = (b.textContent || '').trim().toLowerCase();
-      return txt.includes('submit review') || txt.includes('nộp bài đánh giá') || txt.includes('submit');
+      return txt.includes('submit') || txt.includes('nộp');
     });
 
-  if (submitBtn && !submitBtn.disabled) {
+  if (submitBtn) {
     submitBtn.scrollIntoView({ behavior: 'smooth', block: 'center' });
-    await sleep(400);
-    submitBtn.click();
-    return {
-      success: true,
-      message: `Đã chấm xong bài: chọn ${optionsSelected} tiêu chí tối đa, điền ${textareasFilled} nhận xét và bấm nộp!`
-    };
+    // Highlight the button briefly so user sees it
+    const originalOutline = submitBtn.style.outline;
+    submitBtn.style.outline = '3px solid #6366f1';
+    submitBtn.style.boxShadow = '0 0 12px #6366f1aa';
+    setTimeout(() => {
+      submitBtn.style.outline = originalOutline;
+      submitBtn.style.boxShadow = '';
+    }, 3000);
   }
 
   return {
     success: true,
-    message: `Đã điền ${optionsSelected} tiêu chí và ${textareasFilled} nhận xét! Bạn có thể kiểm tra trước khi bấm nộp.`
+    message: submitBtn
+      ? `✅ Đã chọn ${optionsSelected} tiêu chí và điền ${textareasFilled} nhận xét! Kiểm tra lại và bấm nút nộp (đã highlight màu tím) nhé.`
+      : `✅ Đã chọn ${optionsSelected} tiêu chí và điền ${textareasFilled} nhận xét! Bạn có thể cuộn xuống để kiểm tra và nộp bài.`
   };
 }
 
