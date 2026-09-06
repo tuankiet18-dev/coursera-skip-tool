@@ -150,9 +150,19 @@ function toggleLanguage() {
 function showAlert(type, message) {
   const el = document.getElementById('result-alert');
   el.style.display = 'block';
-  el.style.background = type === 'error' ? 'var(--error-bg)' : 'var(--success-bg)';
-  el.style.border = type === 'error' ? '1px solid var(--error-bg)' : '1px solid var(--success-bg)';
-  el.style.color = type === 'error' ? 'var(--error)' : 'var(--success)';
+  if (type === 'warning') {
+    el.style.background = 'rgba(245, 158, 11, 0.15)';
+    el.style.border = '1px solid rgba(245, 158, 11, 0.3)';
+    el.style.color = '#fbbf24';
+  } else if (type === 'error') {
+    el.style.background = 'var(--error-bg)';
+    el.style.border = '1px solid var(--error-bg)';
+    el.style.color = 'var(--error)';
+  } else {
+    el.style.background = 'var(--success-bg)';
+    el.style.border = '1px solid var(--success-bg)';
+    el.style.color = 'var(--success)';
+  }
   el.textContent = message;
 }
 
@@ -262,7 +272,7 @@ async function markCompleted() {
     if (result && result.success) {
       showAlert('success', result.message || t('successCurrent'));
       showRatingToast();
-      if (result.submitted !== false) {
+      if (result.submitted === true) {
         setTimeout(() => {
           chrome.tabs.reload(tab.id);
         }, 1200);
@@ -392,6 +402,15 @@ chrome.runtime.onMessage.addListener((message) => {
         const { tab } = await getActiveCourseraTab();
         if (tab) chrome.tabs.reload(tab.id);
       }, 1500);
+    } else if (message.status === 'partial') {
+      const total = message.total || message.current || '';
+      progBar.style.width = '100%';
+      progPct.textContent = '100%';
+      progMsg.textContent = message.message || '⚠️ Hoàn thành một phần!';
+      setLoading('btn-skip-all', 'txt-btn-skip-all', false, 'btnSkipAll');
+      setLoading('btn-skip-all-discussions', 'txt-btn-skip-all-discussions', false, 'btnSkipAllDiscussions');
+      showAlert('warning', message.message || 'Một số bài chưa thể hoàn thành.');
+      // Không reload trang khi có bài thất bại
     } else if (message.status === 'error') {
       showAlert('error', message.message || t('unknownError'));
       setLoading('btn-skip-all', 'txt-btn-skip-all', false, 'btnSkipAll');

@@ -487,19 +487,29 @@ async function markAllItemsCompleted() {
   const batchSize = 5;
   notifyProgress({ status: 'starting', current: 0, total, message: `Bắt đầu xử lý ${total} bài học...` });
 
+  let successCount = 0;
+  let failedCount = 0;
+
   for (let i = 0; i < total; i += batchSize) {
     const batch = items.slice(i, i + batchSize);
     
     await Promise.all(batch.map(async (item) => {
       try {
         const typeName = item.contentSummary.typeName;
+        let res = null;
         if (typeName.includes('lecture')) {
-           await markLectureCompleted(userId, courseId, courseSlug, item.id, true);
+           res = await markLectureCompleted(userId, courseId, courseSlug, item.id, true);
         } else if (typeName.includes('supplement')) {
-           await markSupplementCompleted(userId, courseId, courseSlug, item.id);
+           res = await markSupplementCompleted(userId, courseId, courseSlug, item.id);
+        }
+        if (res && res.success) {
+          successCount++;
+        } else {
+          failedCount++;
         }
       } catch (e) {
         console.log('[CourseraSkip] Item error', item.id, e);
+        failedCount++;
       }
     }));
     
@@ -512,7 +522,104 @@ async function markAllItemsCompleted() {
     }
   }
 
-  notifyProgress({ status: 'completed', current: total, total, message: `✅ Hoàn thành toàn bộ ${total} bài học Video & Reading!` });
+  const status = failedCount === 0 ? 'completed' : (successCount > 0 ? 'partial' : 'error');
+  const finalMsg = failedCount === 0
+    ? `✅ Hoàn thành toàn bộ ${total} bài học Video & Reading!`
+    : `⚠️ Đã xử lý: ${successCount} thành công, ${failedCount} thất bại.`;
+
+  notifyProgress({
+    status,
+    current: total,
+    total,
+    message: finalMsg,
+    failedCount,
+    successCount
+  });
+}
+
+/**
+ * Kiểm tra xem người dùng đã từng gửi câu trả lời cho questionId này chưa.
+ * Phân trang bằng start/limit (limit=50, tối đa 250 items) để không bỏ sót câu trả lời cũ.
+ * Ném lỗi nếu request API thất bại để caller không tự ý đăng bài khi chưa kiểm tra được.
+ */
+async function hasUserAnsweredDiscussion(courseId, questionId, userId) {
+  const limit = 50;
+  let start = 0;
+  const maxItemsToCheck = 250;
+
+  while (start < maxItemsToCheck) {
+    const checkUrl = `${BASE}/api/onDemandCourseForumAnswers.v1/?q=courseForumQuestionId&courseForumQuestionId=${courseId}~${questionId}&fields=creatorId&limit=${limit}&start=${start}`;
+    const checkRes = await courseraFetch(checkUrl);
+
+    if (!checkRes.ok) {
+      throw new Error(`API kiểm tra trùng lặp phản hồi mã lỗi HTTP ${checkRes.status}`);
+    }
+
+    const checkData = await checkRes.json();
+    const elements = checkData?.elements || [];
+    const found = elements.some((ans) => String(ans.creatorId) === String(userId));
+    if (found) {
+      return true;
+    }
+
+    if (elements.length < limit) {
+      break;
+    }
+    start += limit;
+  }
+
+  return false;
+}
+
+/**
+ * Gửi câu trả lời thảo luận kèm cơ chế retry khi gặp mã 429 (Rate Limit).
+ * Tôn trọng Retry-After header hoặc chờ mặc định 5s.
+ */
+async function postDiscussionAnswerWithRetry(courseId, questionId, csrfToken, answerText, maxRetries = 3) {
+  const answerBody = {
+    content: {
+      typeName: 'cml',
+      definition: {
+        dtdId: 'discussion/1',
+        value: `<co-content><text>${answerText}</text></co-content>`,
+      },
+    },
+    courseForumQuestionId: `${courseId}~${questionId}`,
+  };
+
+  const answerFields = 'content,forumQuestionId,parentForumAnswerId,state,creatorId,createdAt,order,courseItemForumQuestionId';
+  const answerUrl = `${BASE}/api/onDemandCourseForumAnswers.v1/?fields=${answerFields}&includes=profiles,children,userId`;
+
+  let postRes = null;
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    postRes = await courseraFetch(answerUrl, {
+      method: 'POST',
+      headers: { 'x-csrf3-token': csrfToken },
+      body: JSON.stringify(answerBody),
+    });
+
+    if (postRes.ok || postRes.status === 201) {
+      return postRes;
+    }
+
+    if (postRes.status === 429 && attempt < maxRetries) {
+      const retryAfterHeader = postRes.headers?.get ? postRes.headers.get('Retry-After') : null;
+      let waitTime = 5000;
+      if (retryAfterHeader) {
+        const parsed = parseInt(retryAfterHeader, 10);
+        if (!isNaN(parsed) && parsed > 0) {
+          waitTime = parsed * 1000;
+        }
+      }
+      console.log(`[CourseraSkip] Discussion POST rate limited (429). Retrying in ${waitTime}ms (attempt ${attempt + 1}/${maxRetries})...`);
+      await sleep(waitTime);
+      continue;
+    }
+
+    break;
+  }
+
+  return postRes;
 }
 
 async function markAllDiscussionsCompleted() {
@@ -570,78 +677,52 @@ async function markAllDiscussionsCompleted() {
       const promptUrl = `${BASE}/api/onDemandDiscussionPrompts.v1/${userId}~${courseId}~${item.id}?fields=${discussionFields}&includes=question`;
 
       const promptRes = await courseraFetch(promptUrl);
-      if (promptRes.ok) {
+      if (!promptRes.ok) {
+        failedCount++;
+      } else {
         const promptData = await promptRes.json();
         const courseItemForumQuestionId = promptData?.elements?.[0]?.promptType?.courseItemForumQuestionId
           ?? promptData?.elements?.[0]?.question?.courseItemForumQuestionId;
 
-        if (courseItemForumQuestionId) {
+        if (!courseItemForumQuestionId) {
+          failedCount++;
+        } else {
           const parts = courseItemForumQuestionId.split('~');
           const questionId = parts[2] || parts[parts.length - 1];
 
-          if (questionId) {
+          if (!questionId) {
+            failedCount++;
+          } else {
             // 2. Kiểm tra xem học viên đã từng đăng câu trả lời cho câu này chưa (chống spam trùng lặp)
             let alreadyAnswered = false;
+            let checkFailed = false;
             try {
-              const checkUrl = `${BASE}/api/onDemandCourseForumAnswers.v1/?q=courseForumQuestionId&courseForumQuestionId=${courseId}~${questionId}&fields=creatorId&limit=20`;
-              const checkRes = await courseraFetch(checkUrl);
-              if (checkRes.ok) {
-                const checkData = await checkRes.json();
-                alreadyAnswered = checkData?.elements?.some((ans) => String(ans.creatorId) === String(userId));
-              }
-            } catch (_) {}
+              alreadyAnswered = await hasUserAnsweredDiscussion(courseId, questionId, userId);
+            } catch (checkErr) {
+              console.log('[CourseraSkip] Duplicate check failed for item', item.id, checkErr);
+              checkFailed = true;
+              failedCount++;
+            }
 
-            if (alreadyAnswered) {
-              console.log('[CourseraSkip] Discussion prompt already answered, skipping duplicate:', item.id);
-              skippedDuplicate++;
-              successCount++;
-            } else {
-              const answerText = getRandomDiscussionResponse();
-              const answerBody = {
-                content: {
-                  typeName: 'cml',
-                  definition: {
-                    dtdId: 'discussion/1',
-                    value: `<co-content><text>${answerText}</text></co-content>`,
-                  },
-                },
-                courseForumQuestionId: `${courseId}~${questionId}`,
-              };
-
-              const answerFields = 'content,forumQuestionId,parentForumAnswerId,state,creatorId,createdAt,order,courseItemForumQuestionId';
-              const answerUrl = `${BASE}/api/onDemandCourseForumAnswers.v1/?fields=${answerFields}&includes=profiles,children,userId`;
-
-              let postRes = await courseraFetch(answerUrl, {
-                method: 'POST',
-                headers: { 'x-csrf3-token': csrfToken },
-                body: JSON.stringify(answerBody),
-              });
-
-              // Xử lý rate limit 429 nếu có
-              if (postRes.status === 429) {
-                await sleep(5000);
-                postRes = await courseraFetch(answerUrl, {
-                  method: 'POST',
-                  headers: { 'x-csrf3-token': csrfToken },
-                  body: JSON.stringify(answerBody),
-                });
-              }
-
-              if (postRes.ok || postRes.status === 201) {
+            if (!checkFailed) {
+              if (alreadyAnswered) {
+                console.log('[CourseraSkip] Discussion prompt already answered, skipping duplicate:', item.id);
+                skippedDuplicate++;
                 successCount++;
               } else {
-                console.log('[CourseraSkip] Failed to post discussion, HTTP status:', postRes.status);
-                failedCount++;
+                const answerText = getRandomDiscussionResponse();
+                const postRes = await postDiscussionAnswerWithRetry(courseId, questionId, csrfToken, answerText);
+
+                if (postRes && (postRes.ok || postRes.status === 201)) {
+                  successCount++;
+                } else {
+                  console.log('[CourseraSkip] Failed to post discussion, HTTP status:', postRes?.status);
+                  failedCount++;
+                }
               }
             }
-          } else {
-            failedCount++;
           }
-        } else {
-          failedCount++;
         }
-      } else {
-        failedCount++;
       }
     } catch (e) {
       console.log('[CourseraSkip] Error posting discussion for item', item.id, e);
@@ -662,17 +743,21 @@ async function markAllDiscussionsCompleted() {
     }
   }
 
+  const status = failedCount === 0 ? 'completed' : (successCount > 0 ? 'partial' : 'error');
   const finalMsg = failedCount === 0
     ? (skippedDuplicate > 0
         ? `✅ Hoàn thành toàn bộ ${total} bài thảo luận (${skippedDuplicate} bài đã trả lời từ trước)!`
         : `✅ Hoàn thành toàn bộ ${total} bài thảo luận trong khóa học!`)
-    : `⚠️ Đã xử lý: ${successCount} thành công, ${failedCount} thất bại.`;
+    : `⚠️ Đã xử lý: ${successCount} thành công (${skippedDuplicate} bài đã có sẵn), ${failedCount} thất bại.`;
 
   notifyProgress({
-    status: 'completed',
+    status,
     current: total,
     total,
-    message: finalMsg
+    message: finalMsg,
+    failedCount,
+    successCount,
+    skippedDuplicate
   });
 }
 
@@ -690,18 +775,44 @@ function getRandomReviewComment() {
   return REVIEW_COMMENTS[Math.floor(Math.random() * REVIEW_COMMENTS.length)];
 }
 
-function fillTextInput(el, text) {
+function getTargetInputFromElement(el) {
+  if (!el) return null;
+  if (
+    (typeof HTMLTextAreaElement !== 'undefined' && el instanceof HTMLTextAreaElement) ||
+    (typeof HTMLInputElement !== 'undefined' && el instanceof HTMLInputElement) ||
+    el.tagName === 'TEXTAREA' ||
+    (el.tagName === 'INPUT' && (el.type === 'text' || !el.type)) ||
+    (el.getAttribute && (el.getAttribute('contenteditable') === 'true' || el.getAttribute('contenteditable') === '')) ||
+    (el.getAttribute && el.getAttribute('role') === 'textbox') ||
+    (el.classList && el.classList.contains('cml-editor'))
+  ) {
+    return el;
+  }
+  const inner = el.querySelector
+    ? el.querySelector('textarea, input[type="text"], input:not([type]), div[contenteditable="true"], div[contenteditable=""], div[role="textbox"], .cml-editor')
+    : null;
+  return inner || el;
+}
+
+function fillTextInput(rawEl, text) {
+  const el = getTargetInputFromElement(rawEl);
   if (!el) return;
 
   // Case 1: contenteditable div (Coursera modern UI / rich text editor)
-  if (el.getAttribute('contenteditable') !== null || el.getAttribute('role') === 'textbox' || el.classList.contains('cml-editor')) {
-    el.focus();
-    el.click();
+  const isContentEditable = (el.getAttribute && el.getAttribute('contenteditable') !== null && el.getAttribute('contenteditable') !== 'false') ||
+    (el.getAttribute && el.getAttribute('role') === 'textbox') ||
+    (el.classList && el.classList.contains('cml-editor'));
+
+  if (isContentEditable) {
+    if (typeof el.focus === 'function') el.focus();
+    if (typeof el.click === 'function') el.click();
 
     let inserted = false;
     try {
-      document.execCommand('selectAll', false, null);
-      inserted = document.execCommand('insertText', false, text);
+      if (typeof document !== 'undefined' && document.execCommand) {
+        document.execCommand('selectAll', false, null);
+        inserted = document.execCommand('insertText', false, text);
+      }
     } catch (_) {}
 
     if (!inserted || !el.textContent || el.textContent.trim().length === 0) {
@@ -709,29 +820,40 @@ function fillTextInput(el, text) {
     }
 
     try {
-      el.dispatchEvent(new InputEvent('beforeinput', { bubbles: true, inputType: 'insertText', data: text }));
-      el.dispatchEvent(new InputEvent('input', { bubbles: true, inputType: 'insertText', data: text }));
+      if (typeof InputEvent !== 'undefined') {
+        el.dispatchEvent(new InputEvent('beforeinput', { bubbles: true, inputType: 'insertText', data: text }));
+        el.dispatchEvent(new InputEvent('input', { bubbles: true, inputType: 'insertText', data: text }));
+      } else {
+        el.dispatchEvent(new Event('input', { bubbles: true }));
+      }
     } catch (_) {
       el.dispatchEvent(new Event('input', { bubbles: true }));
     }
     el.dispatchEvent(new Event('change', { bubbles: true }));
-    el.dispatchEvent(new KeyboardEvent('keydown', { bubbles: true, key: ' ' }));
-    el.dispatchEvent(new KeyboardEvent('keyup', { bubbles: true, key: ' ' }));
+    if (typeof KeyboardEvent !== 'undefined') {
+      el.dispatchEvent(new KeyboardEvent('keydown', { bubbles: true, key: ' ' }));
+      el.dispatchEvent(new KeyboardEvent('keyup', { bubbles: true, key: ' ' }));
+    }
     el.dispatchEvent(new Event('blur', { bubbles: true }));
     return;
   }
 
   // Case 2: standard <textarea> or <input>
-  el.focus();
-  el.click();
+  if (typeof el.focus === 'function') el.focus();
+  if (typeof el.click === 'function') el.click();
   try {
-    document.execCommand('selectAll', false, null);
-    document.execCommand('insertText', false, text);
+    if (typeof document !== 'undefined' && document.execCommand) {
+      document.execCommand('selectAll', false, null);
+      document.execCommand('insertText', false, text);
+    }
   } catch (_) {}
-  // Fallback: set value directly and fire events (for non-React forms)
-  const proto = (el instanceof HTMLTextAreaElement)
-    ? window.HTMLTextAreaElement.prototype
-    : window.HTMLInputElement.prototype;
+
+  // Chọn prototype chính xác theo loại element để tránh TypeError: Illegal invocation
+  const isTextarea = (typeof HTMLTextAreaElement !== 'undefined' && el instanceof HTMLTextAreaElement) || el.tagName === 'TEXTAREA';
+  const proto = isTextarea
+    ? (typeof HTMLTextAreaElement !== 'undefined' ? HTMLTextAreaElement.prototype : Object.getPrototypeOf(el))
+    : (typeof HTMLInputElement !== 'undefined' ? HTMLInputElement.prototype : Object.getPrototypeOf(el));
+
   const nativeInputSetter = Object.getOwnPropertyDescriptor(proto, 'value')?.set;
   if (nativeInputSetter) {
     nativeInputSetter.call(el, text);
@@ -750,6 +872,7 @@ async function autoGradePeerReview() {
   let textareasFilled = 0;
 
   // 1. Polling chờ rubric xuất hiện trên DOM (tối đa 6 giây để chống false-success khi React chưa render)
+  // Tuyệt đối không đưa feedback input wrapper vào rubricSelectors
   const rubricSelectors = [
     '.rc-FormPart',
     '.rc-FormPartsQuestion',
@@ -757,7 +880,6 @@ async function autoGradePeerReview() {
     'fieldset.c-peer-review-rubric',
     'div[data-testid*="rubric-criterion"]',
     'div[data-testid*="rubric-item"]',
-    'div[data-testid="peer-review-multi-line-input-field"]',
   ];
 
   let rubricParts = [];
@@ -775,11 +897,11 @@ async function autoGradePeerReview() {
     if (rubricParts.length > 0) break;
 
     // Fallback: tìm theo container peer review
-    const peerContainer = document.querySelector(
+    const container = document.querySelector(
       '.c-peer-review, [data-testid*="peer-review"], .rc-PeerReview, [data-testid*="give-feedback"], main'
     );
-    if (peerContainer) {
-      const groups = peerContainer.querySelectorAll('[role="radiogroup"], fieldset, .rc-FormPart, .rc-FormPartsQuestion');
+    if (container) {
+      const groups = container.querySelectorAll('[role="radiogroup"], fieldset, .rc-FormPart, .rc-FormPartsQuestion');
       if (groups.length > 0) {
         rubricParts = Array.from(groups);
         break;
@@ -788,17 +910,19 @@ async function autoGradePeerReview() {
     await sleep(300);
   }
 
+  const processedInputs = new Set();
+
   // 2. Duyệt qua từng tiêu chí rubric để chọn radio điểm cao nhất và điền feedback
   for (const part of rubricParts) {
-    // Lọc các radio không bị disabled
-    const radios = Array.from(part.querySelectorAll('input[type="radio"]')).filter(
+    // Lọc các radio không bị disabled hoặc aria-disabled="true"
+    const enabledRadios = Array.from(part.querySelectorAll('input[type="radio"]')).filter(
       (r) => !r.disabled && r.getAttribute('aria-disabled') !== 'true'
     );
-    if (radios.length > 0) {
-      let bestRadio = radios[radios.length - 1]; // default: option cuối cùng (thường là điểm cao nhất)
+    if (enabledRadios.length > 0) {
+      let bestRadio = enabledRadios[enabledRadios.length - 1]; // default: option cuối cùng trong số enabled
       let maxScore = -1;
 
-      radios.forEach((r) => {
+      enabledRadios.forEach((r) => {
         const labelEl = r.closest('label') || document.querySelector(`label[for="${r.id}"]`);
         const labelText = labelEl?.textContent || r.value || '';
         const scoreMatch = labelText.match(/(\d+)\s*(?:points?|pts?|điểm)/i);
@@ -808,8 +932,11 @@ async function autoGradePeerReview() {
         }
       });
 
-      if (!bestRadio.checked) {
-        bestRadio.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      const wasChecked = bestRadio.checked || bestRadio.getAttribute('aria-checked') === 'true';
+      if (!wasChecked) {
+        if (typeof bestRadio.scrollIntoView === 'function') {
+          bestRadio.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }
         await sleep(150);
         bestRadio.click();
         bestRadio.dispatchEvent(new Event('change', { bubbles: true }));
@@ -817,6 +944,8 @@ async function autoGradePeerReview() {
         if (bestRadio.checked || bestRadio.getAttribute('aria-checked') === 'true') {
           optionsSelected++;
         }
+      } else {
+        optionsSelected++;
       }
     }
 
@@ -824,7 +953,11 @@ async function autoGradePeerReview() {
     const feedbackEls = Array.from(part.querySelectorAll(
       'textarea, input[type="text"], div[contenteditable="true"], div[role="textbox"], div[data-testid="peer-review-multi-line-input-field"]'
     ));
-    for (const el of feedbackEls) {
+    for (const rawEl of feedbackEls) {
+      const el = getTargetInputFromElement(rawEl);
+      if (!el || processedInputs.has(el)) continue;
+      processedInputs.add(el);
+
       const currentText = el.value ?? el.textContent ?? '';
       if (currentText.trim().length === 0) {
         fillTextInput(el, getRandomReviewComment());
@@ -840,12 +973,16 @@ async function autoGradePeerReview() {
   ) || document.body;
 
   const allFeedbackEls = Array.from(peerContainer.querySelectorAll(
-    'textarea, div[data-testid="peer-review-multi-line-input-field"], div[contenteditable="true"][data-testid*="feedback"], div[contenteditable="true"][data-testid*="comment"], .c-peer-review-submit-textarea-input-field'
+    'textarea, input[type="text"], div[data-testid="peer-review-multi-line-input-field"], div[contenteditable="true"][data-testid*="feedback"], div[contenteditable="true"][data-testid*="comment"], div[role="textbox"], .c-peer-review-submit-textarea-input-field'
   ));
-  for (const el of allFeedbackEls) {
-    // Bỏ qua nếu element này đã nằm trong rubricParts đã xử lý
-    if (rubricParts.some((p) => p.contains(el))) continue;
+  for (const rawEl of allFeedbackEls) {
+    const el = getTargetInputFromElement(rawEl);
+    if (!el || processedInputs.has(el)) continue;
 
+    // Bỏ qua nếu element này đã nằm trong rubricParts đã xử lý
+    if (rubricParts.some((p) => p.contains(rawEl) || p.contains(el))) continue;
+
+    processedInputs.add(el);
     const currentText = el.value ?? el.textContent ?? '';
     if (currentText.trim().length === 0) {
       fillTextInput(el, getRandomReviewComment());
@@ -862,11 +999,13 @@ async function autoGradePeerReview() {
     if (anyChecked.length > 0) {
       return {
         success: true,
+        submitted: false,
         message: 'ℹ️ Các tiêu chí chấm bài đã được chọn trước đó. Bạn có thể cuộn xuống kiểm tra và bấm nộp.'
       };
     }
     return {
       success: false,
+      submitted: false,
       error: 'Không tìm thấy hoặc không thể điền tiêu chí chấm bài nào. Hãy đảm bảo form chấm bài của bạn học đã tải xong.'
     };
   }
@@ -881,18 +1020,25 @@ async function autoGradePeerReview() {
     });
 
   if (submitBtn) {
-    submitBtn.scrollIntoView({ behavior: 'smooth', block: 'center' });
-    const originalOutline = submitBtn.style.outline;
-    submitBtn.style.outline = '3px solid #a855f7';
-    submitBtn.style.boxShadow = '0 0 14px rgba(168, 85, 247, 0.6)';
-    setTimeout(() => {
-      submitBtn.style.outline = originalOutline;
-      submitBtn.style.boxShadow = '';
-    }, 4000);
+    if (typeof submitBtn.scrollIntoView === 'function') {
+      submitBtn.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+    const originalOutline = submitBtn.style?.outline;
+    if (submitBtn.style) {
+      submitBtn.style.outline = '3px solid #a855f7';
+      submitBtn.style.boxShadow = '0 0 14px rgba(168, 85, 247, 0.6)';
+      setTimeout(() => {
+        if (submitBtn.style) {
+          submitBtn.style.outline = originalOutline || '';
+          submitBtn.style.boxShadow = '';
+        }
+      }, 4000);
+    }
   }
 
   return {
     success: true,
+    submitted: false,
     message: submitBtn
       ? `✅ Đã chọn ${optionsSelected} tiêu chí và điền ${textareasFilled} nhận xét! Kiểm tra lại và bấm nút nộp (đã highlight màu tím) nhé.`
       : `✅ Đã chọn ${optionsSelected} tiêu chí và điền ${textareasFilled} nhận xét! Bạn có thể cuộn xuống để kiểm tra và nộp bài.`
@@ -1133,72 +1279,78 @@ async function autoPostDiscussion() {
       const promptRes = await courseraFetch(promptUrl);
       console.log('[CourseraSkip] onDemandDiscussionPrompts status:', promptRes.status);
 
-      if (promptRes.ok) {
-        const promptData = await promptRes.json();
-        const courseItemForumQuestionId = promptData?.elements?.[0]?.promptType?.courseItemForumQuestionId
-          ?? promptData?.elements?.[0]?.question?.courseItemForumQuestionId;
-
-        if (courseItemForumQuestionId) {
-          const parts = courseItemForumQuestionId.split('~');
-          const questionId = parts[2] || parts[parts.length - 1];
-
-          if (questionId) {
-            // Kiểm tra xem user đã trả lời câu này chưa để tránh đăng trùng lặp
-            try {
-              const checkUrl = `${BASE}/api/onDemandCourseForumAnswers.v1/?q=courseForumQuestionId&courseForumQuestionId=${courseId}~${questionId}&fields=creatorId&limit=20`;
-              const checkRes = await courseraFetch(checkUrl);
-              if (checkRes.ok) {
-                const checkData = await checkRes.json();
-                const alreadyAnswered = checkData?.elements?.some((ans) => String(ans.creatorId) === String(userId));
-                if (alreadyAnswered) {
-                  return {
-                    success: true,
-                    submitted: false,
-                    message: 'ℹ️ Bạn đã đăng câu trả lời cho bài thảo luận này từ trước rồi!',
-                  };
-                }
-              }
-            } catch (_) {}
-
-            await sleep(500);
-            const answerBody = {
-              content: {
-                typeName: 'cml',
-                definition: {
-                  dtdId: 'discussion/1',
-                  value: `<co-content><text>${answerText}</text></co-content>`,
-                },
-              },
-              courseForumQuestionId: `${courseId}~${questionId}`,
-            };
-
-            const answerFields = 'content,forumQuestionId,parentForumAnswerId,state,creatorId,createdAt,order,upvoteCount,childAnswerCount,isFlagged,isUpvoted,courseItemForumQuestionId,parentCourseItemForumAnswerId';
-            const answerUrl = `${BASE}/api/onDemandCourseForumAnswers.v1/?fields=${answerFields}&includes=profiles,children,userId`;
-
-            console.log('[CourseraSkip] Posting discussion answer to:', answerUrl);
-            const answerRes = await courseraFetch(answerUrl, {
-              method: 'POST',
-              headers: { 'x-csrf3-token': csrfToken },
-              body: JSON.stringify(answerBody),
-            });
-
-            console.log('[CourseraSkip] Post answer status:', answerRes.status);
-            if (answerRes.ok || answerRes.status === 201) {
-              return {
-                success: true,
-                submitted: true,
-                message: '✅ Đã đăng câu trả lời thảo luận thành công! Coursera sẽ tự cập nhật tiến độ.',
-              };
-            }
-          }
-        }
+      if (!promptRes.ok) {
+        return {
+          success: false,
+          error: `Không lấy được thông tin bài thảo luận từ API (HTTP ${promptRes.status}). Vui lòng thử lại.`,
+        };
       }
+
+      const promptData = await promptRes.json();
+      const courseItemForumQuestionId = promptData?.elements?.[0]?.promptType?.courseItemForumQuestionId
+        ?? promptData?.elements?.[0]?.question?.courseItemForumQuestionId;
+
+      if (!courseItemForumQuestionId) {
+        return {
+          success: false,
+          error: 'Không tìm thấy forum question ID của bài thảo luận này.',
+        };
+      }
+
+      const parts = courseItemForumQuestionId.split('~');
+      const questionId = parts[2] || parts[parts.length - 1];
+
+      if (!questionId) {
+        return {
+          success: false,
+          error: 'Định dạng question ID không hợp lệ.',
+        };
+      }
+
+      // 1. Kiểm tra duplicate trước khi gọi bất kỳ API POST hay DOM fallback nào!
+      let alreadyAnswered = false;
+      try {
+        alreadyAnswered = await hasUserAnsweredDiscussion(courseId, questionId, userId);
+      } catch (checkErr) {
+        console.log('[CourseraSkip] Duplicate check failed:', checkErr);
+        return {
+          success: false,
+          error: `Không thể kiểm tra câu trả lời cũ (${checkErr.message}). Vui lòng thử lại để tránh gửi trùng lặp.`,
+        };
+      }
+
+      if (alreadyAnswered) {
+        return {
+          success: true,
+          submitted: false,
+          skippedDuplicate: true,
+          message: 'ℹ️ Bạn đã đăng câu trả lời cho bài thảo luận này từ trước rồi!',
+        };
+      }
+
+      // 2. Gửi trả lời qua API kèm retry nếu gặp 429
+      const postRes = await postDiscussionAnswerWithRetry(courseId, questionId, csrfToken, answerText);
+      if (postRes && (postRes.ok || postRes.status === 201)) {
+        return {
+          success: true,
+          submitted: true,
+          message: '✅ Đã đăng câu trả lời thảo luận thành công! Coursera sẽ tự cập nhật tiến độ.',
+        };
+      }
+
+      // API POST trả mã lỗi sau khi đã kiểm tra duplicate an toàn
+      console.log('[CourseraSkip] API post discussion failed with status:', postRes?.status, 'falling back to DOM...');
+      return await postDiscussionViaDOM(answerText);
     }
   } catch (apiErr) {
-    console.log('[CourseraSkip] API post discussion failed, falling back to DOM...', apiErr);
+    console.log('[CourseraSkip] API post discussion exception:', apiErr);
+    return {
+      success: false,
+      error: `Lỗi khi gửi thảo luận: ${apiErr.message}`,
+    };
   }
 
-  // --- CÁCH 2: Fallback qua tương tác DOM ---
+  // --- CÁCH 2: Fallback qua tương tác DOM (chỉ khi không có userId/courseId) ---
   console.log('[CourseraSkip] Running DOM fallback for discussion post with polling...');
   return await postDiscussionViaDOM(answerText);
 }
@@ -1284,6 +1436,16 @@ function updateFloatingWidgetProgress(data) {
     setTimeout(() => {
       window.location.reload();
     }, 1800);
+  } else if (data.status === 'partial') {
+    wrap.style.display = 'block';
+    fillEl.style.width = '100%';
+    pctEl.textContent = '100%';
+    msgEl.textContent = data.message || '⚠️ Hoàn thành một phần!';
+    isWidgetProcessing = false;
+    if (vrBtn) { vrBtn.disabled = false; vrBtn.classList.remove('loading'); }
+    if (discBtn) { discBtn.disabled = false; discBtn.classList.remove('loading'); }
+    if (currentBtn) { currentBtn.disabled = false; currentBtn.classList.remove('loading'); }
+    showWidgetAlert('warning', data.message || 'Một số bài chưa thể hoàn thành.');
   } else if (data.status === 'error') {
     wrap.style.display = 'none';
     isWidgetProcessing = false;
@@ -1555,6 +1717,11 @@ function initFloatingWidget() {
       background: rgba(239, 68, 68, 0.15);
       border: 1px solid rgba(239, 68, 68, 0.3);
       color: #f87171;
+    }
+    .cs-alert-warning {
+      background: rgba(245, 158, 11, 0.15);
+      border: 1px solid rgba(245, 158, 11, 0.3);
+      color: #fbbf24;
     }
 
     /* Status Card */
