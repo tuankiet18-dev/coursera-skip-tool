@@ -351,9 +351,12 @@ async function autoPostDiscussion() {
     if (result && result.success) {
       showAlert('success', result.message || t('successDiscussion'));
       showRatingToast();
-      setTimeout(() => {
-        chrome.tabs.reload(tab.id);
-      }, 1500);
+      // Chỉ tải lại trang khi bài đã thực sự được nộp thành công
+      if (result.submitted !== false) {
+        setTimeout(() => {
+          chrome.tabs.reload(tab.id);
+        }, 2000);
+      }
     } else {
       showAlert('error', result?.error || t('unknownError'));
     }

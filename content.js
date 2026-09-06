@@ -90,7 +90,7 @@ function getCourseContext() {
 
 async function getCourseId(courseSlug) {
   try {
-    const res = await fetch(`${BASE}/api/onDemandCourses.v1?q=slug&slug=${courseSlug}&fields=id`);
+    const res = await courseraFetch(`${BASE}/api/onDemandCourses.v1?q=slug&slug=${courseSlug}&fields=id`);
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const data = await res.json();
     const id = data?.elements?.[0]?.id ?? null;
@@ -480,19 +480,31 @@ function getRandomReviewComment() {
 function fillTextInput(el, text) {
   if (!el) return;
 
-  // Case 1: contenteditable div (Coursera modern UI)
-  if (el.getAttribute('contenteditable') !== null || el.getAttribute('role') === 'textbox') {
+  // Case 1: contenteditable div (Coursera modern UI / rich text editor)
+  if (el.getAttribute('contenteditable') !== null || el.getAttribute('role') === 'textbox' || el.classList.contains('cml-editor')) {
     el.focus();
-    el.textContent = '';
-    // Use execCommand to set text so React's synthetic events fire
+    el.click();
+
+    let inserted = false;
     try {
       document.execCommand('selectAll', false, null);
-      document.execCommand('insertText', false, text);
-    } catch (_) {
+      inserted = document.execCommand('insertText', false, text);
+    } catch (_) {}
+
+    if (!inserted || !el.textContent || el.textContent.trim().length === 0) {
       el.textContent = text;
     }
-    el.dispatchEvent(new Event('input', { bubbles: true }));
+
+    try {
+      el.dispatchEvent(new InputEvent('beforeinput', { bubbles: true, inputType: 'insertText', data: text }));
+      el.dispatchEvent(new InputEvent('input', { bubbles: true, inputType: 'insertText', data: text }));
+    } catch (_) {
+      el.dispatchEvent(new Event('input', { bubbles: true }));
+    }
     el.dispatchEvent(new Event('change', { bubbles: true }));
+    el.dispatchEvent(new KeyboardEvent('keydown', { bubbles: true, key: ' ' }));
+    el.dispatchEvent(new KeyboardEvent('keyup', { bubbles: true, key: ' ' }));
+    el.dispatchEvent(new Event('blur', { bubbles: true }));
     return;
   }
 
@@ -513,6 +525,7 @@ function fillTextInput(el, text) {
   }
   el.dispatchEvent(new Event('input', { bubbles: true }));
   el.dispatchEvent(new Event('change', { bubbles: true }));
+  el.dispatchEvent(new Event('blur', { bubbles: true }));
 }
 
 async function autoGradePeerReview() {
@@ -725,12 +738,23 @@ function checkDiscussionPrompt() {
 }
 
 /**
- * Fallback DOM: Tự động tìm khung soạn thảo trên trang và bấm nút Reply.
+ * Fallback DOM: Tự động tìm khung soạn thảo trên trang, điền nội dung,
+ * chờ nút Reply được enable (không còn disabled) rồi mới bấm.
  */
 async function postDiscussionViaDOM(text) {
-  const editor = document.querySelector(
+  // 1. Tìm ô soạn thảo (contenteditable div hoặc textarea)
+  let editor = document.querySelector(
     'div[contenteditable="true"], div[role="textbox"], .cml-editor, div[data-testid*="editor"], textarea'
   );
+
+  if (!editor) {
+    const allDivs = Array.from(document.querySelectorAll('div, textarea'));
+    editor = allDivs.find(d => {
+      const ph = d.getAttribute('placeholder') || d.getAttribute('aria-label') || '';
+      return ph.toLowerCase().includes('type your response') || ph.toLowerCase().includes('response');
+    });
+  }
+
   if (!editor) {
     return { success: false, error: 'Không tìm thấy ô nhập câu trả lời thảo luận trên trang.' };
   }
@@ -738,37 +762,82 @@ async function postDiscussionViaDOM(text) {
   editor.scrollIntoView({ behavior: 'smooth', block: 'center' });
   editor.focus();
   editor.click();
-  await sleep(250);
+  await sleep(300);
 
+  // 2. Điền nội dung câu trả lời
   fillTextInput(editor, text);
   await sleep(400);
 
-  // Tìm nút Reply trên giao diện
-  const replyBtn = Array.from(document.querySelectorAll('button')).find(b => {
-    const txt = (b.textContent || '').trim().toLowerCase();
-    return (txt === 'reply' || txt === 'phản hồi' || txt === 'post' || txt === 'đăng');
-  }) || document.querySelector('button[data-testid*="reply"], button[type="submit"]');
+  // Helper tìm nút Reply
+  function findReplyBtn() {
+    const buttons = Array.from(document.querySelectorAll('button'));
+    return buttons.find(b => {
+      const txt = (b.textContent || '').trim().toLowerCase();
+      return txt === 'reply' || txt === 'phản hồi' || txt === 'post' || txt === 'submit reply';
+    }) || document.querySelector('button[data-testid*="reply"], button[data-testid*="comment-submit"], button[type="submit"]');
+  }
 
-  if (replyBtn) {
-    replyBtn.scrollIntoView({ behavior: 'smooth', block: 'center' });
-    await sleep(300);
-    if (!replyBtn.disabled) {
+  // Helper kiểm tra nút đã sẵn sàng để bấm (hết disabled)
+  function isButtonReady(btn) {
+    if (!btn) return false;
+    if (btn.disabled) return false;
+    if (btn.getAttribute('aria-disabled') === 'true') return false;
+    if (btn.classList.contains('disabled') || btn.classList.contains('cds-button-disabled')) return false;
+    const style = window.getComputedStyle(btn);
+    if (style.pointerEvents === 'none') return false;
+    if (style.opacity && parseFloat(style.opacity) < 0.6) return false;
+    return true;
+  }
+
+  // 3. VÒNG LẶP CHỜ: Đợi nút Reply chuyển sang enabled (tối đa 8 giây)
+  const startTime = Date.now();
+  const TIMEOUT_MS = 8000;
+  let replyBtn = findReplyBtn();
+
+  console.log('[CourseraSkip] Waiting for Reply button to become enabled...');
+
+  while (Date.now() - startTime < TIMEOUT_MS) {
+    replyBtn = findReplyBtn();
+
+    if (replyBtn && isButtonReady(replyBtn)) {
+      console.log('[CourseraSkip] Reply button is enabled! Clicking now...');
+      replyBtn.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      await sleep(300);
       replyBtn.click();
+      // Chờ phản hồi gửi đi đến server
+      await sleep(1500);
       return {
         success: true,
-        message: '✅ Đã điền câu trả lời và bấm Reply thành công!'
+        submitted: true,
+        message: '✅ Đã điền câu trả lời và tự động bấm Reply thành công!'
       };
     }
-    // Nếu nút bị disable, highlight để user bấm
+
+    // Kích hoạt thêm sự kiện để nhắc React cập nhật trạng thái ô nhập nếu sau 1.5s vẫn chưa enable
+    if (Date.now() - startTime > 1500 && Date.now() - startTime < 1800) {
+      editor.focus();
+      editor.dispatchEvent(new Event('input', { bubbles: true }));
+      editor.dispatchEvent(new Event('change', { bubbles: true }));
+    }
+
+    await sleep(250);
+  }
+
+  // Nếu sau 8s nút vẫn chưa enabled (ví dụ user cần duyệt lại)
+  if (replyBtn) {
+    replyBtn.scrollIntoView({ behavior: 'smooth', block: 'center' });
     replyBtn.style.outline = '3px solid #0ea5e9';
+    replyBtn.style.boxShadow = '0 0 12px #0ea5e9aa';
     return {
       success: true,
-      message: '✅ Đã điền câu trả lời! Vui lòng bấm nút Reply (viền xanh).'
+      submitted: false,
+      message: '✅ Đã điền câu trả lời! Nút Reply đang chờ sẵn (viền xanh), bạn hãy kiểm tra và bấm Reply nhé.'
     };
   }
 
   return {
     success: true,
+    submitted: false,
     message: '✅ Đã điền câu trả lời vào khung soạn thảo!'
   };
 }
@@ -777,7 +846,7 @@ async function postDiscussionViaDOM(text) {
  * Tự động đăng câu trả lời vào Discussion Prompt của bài học hiện tại.
  * Flow:
  *  1. Thử qua Coursera Forum API (nhanh & sạch)
- *  2. Nếu API không được → tự động fallback sang tương tác DOM trực tiếp
+ *  2. Nếu API không được → tự động fallback sang tương tác DOM trực tiếp (chờ nút enabled rồi mới bấm)
  */
 async function autoPostDiscussion() {
   console.log('[CourseraSkip] Starting Auto Discussion Post...');
@@ -845,6 +914,7 @@ async function autoPostDiscussion() {
             if (answerRes.ok || answerRes.status === 201) {
               return {
                 success: true,
+                submitted: true,
                 message: '✅ Đã đăng câu trả lời thảo luận thành công! Coursera sẽ tự cập nhật tiến độ.',
               };
             }
@@ -857,7 +927,7 @@ async function autoPostDiscussion() {
   }
 
   // --- CÁCH 2: Fallback qua tương tác DOM ---
-  console.log('[CourseraSkip] Running DOM fallback for discussion post...');
+  console.log('[CourseraSkip] Running DOM fallback for discussion post with polling...');
   return await postDiscussionViaDOM(answerText);
 }
 
