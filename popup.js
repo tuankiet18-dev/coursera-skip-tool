@@ -14,8 +14,11 @@ const I18N = {
     guideActionBtnOpen: '🚀 Open Coursera',
     btnSkipCurrent: 'Complete This Lesson',
     btnSkipAll: 'Complete Entire Course',
+    btnAutoReview: 'Auto Grade Peer Review',
     processingCurrent: 'Completing...',
+    processingReview: 'Grading peer review...',
     successCurrent: '✅ Lesson completed! Reloading...',
+    successReview: '✅ Peer review submitted! Reloading...',
     startingBulk: 'Starting automation...',
     fetchingCurriculum: 'Loading course lessons...',
     processingBulk: 'Processing: {current} / {total}',
@@ -40,8 +43,11 @@ const I18N = {
     guideActionBtnOpen: '🚀 Mở Coursera',
     btnSkipCurrent: 'Hoàn thành bài hiện tại',
     btnSkipAll: 'Hoàn thành toàn bộ khóa học',
+    btnAutoReview: 'Tự động chấm bài bạn học',
     processingCurrent: 'Đang xử lý...',
+    processingReview: 'Đang tự động chấm bài...',
     successCurrent: '✅ Đã hoàn thành! Đang tải lại trang...',
+    successReview: '✅ Đã chấm xong bài bạn học! Đang tải lại...',
     startingBulk: 'Đang bắt đầu...',
     fetchingCurriculum: 'Đang tải danh sách bài học...',
     processingBulk: 'Đang xử lý: {current} / {total}',
@@ -60,6 +66,7 @@ const TYPE_CONFIG = {
   supplement: { icon: '📖', en: 'Reading Material', vi: 'Tài liệu Đọc' },
   quiz: { icon: '📝', en: 'Quiz Assessment', vi: 'Bài kiểm tra (Quiz)' },
   programming: { icon: '💻', en: 'Programming Lab', vi: 'Bài tập Thực hành' },
+  peer: { icon: '👥', en: 'Peer Review', vi: 'Bài tập Chấm chéo' },
 };
 
 let currentLang = localStorage.getItem('coursera_skip_lang') || (navigator.language?.startsWith('vi') ? 'vi' : 'en');
@@ -102,6 +109,11 @@ function updateUILanguage() {
   const skipAllBtn = document.getElementById('btn-skip-all');
   if (!skipAllBtn.classList.contains('loading')) {
     document.getElementById('txt-btn-skip-all').textContent = t('btnSkipAll');
+  }
+
+  const autoReviewBtn = document.getElementById('btn-auto-review');
+  if (autoReviewBtn && !autoReviewBtn.classList.contains('loading')) {
+    document.getElementById('txt-btn-auto-review').textContent = t('btnAutoReview');
   }
 
   if (currentContext && currentContext.itemType) {
@@ -196,6 +208,12 @@ async function loadContext() {
     document.getElementById('lbl-course').textContent = formatCourseSlug(context.courseSlug);
     renderTypePill(context.itemType);
 
+    // Switch buttons based on whether this is a peer review
+    const isPeer = context.itemType === 'peer';
+    document.getElementById('btn-skip-current').style.display = isPeer ? 'none' : 'flex';
+    document.getElementById('btn-skip-all').style.display = isPeer ? 'none' : 'flex';
+    document.getElementById('btn-auto-review').style.display = isPeer ? 'flex' : 'none';
+
     return context;
   } catch (_) {
     currentContext = null;
@@ -263,6 +281,31 @@ async function markAllCompleted() {
   }
 }
 
+async function autoGradePeerReview() {
+  hideAlert();
+  setLoading('btn-auto-review', 'txt-btn-auto-review', true, 'processingReview');
+
+  try {
+    const { tab } = await getActiveCourseraTab();
+    if (!tab) throw new Error(t('notOnLesson'));
+
+    const result = await chrome.tabs.sendMessage(tab.id, { action: 'autoGradePeerReview' });
+    if (result && result.success) {
+      showAlert('success', result.message || t('successReview'));
+      showRatingToast();
+      setTimeout(() => {
+        chrome.tabs.reload(tab.id);
+      }, 1500);
+    } else {
+      showAlert('error', result?.error || t('unknownError'));
+    }
+  } catch (error) {
+    showAlert('error', error.message || t('unknownError'));
+  } finally {
+    setLoading('btn-auto-review', 'txt-btn-auto-review', false, 'btnAutoReview');
+  }
+}
+
 // Progress listener
 chrome.runtime.onMessage.addListener((message) => {
   if (message.action === 'progressUpdate') {
@@ -306,6 +349,7 @@ chrome.runtime.onMessage.addListener((message) => {
 document.getElementById('btn-lang-toggle').addEventListener('click', toggleLanguage);
 document.getElementById('btn-skip-current').addEventListener('click', markCompleted);
 document.getElementById('btn-skip-all').addEventListener('click', markAllCompleted);
+document.getElementById('btn-auto-review').addEventListener('click', autoGradePeerReview);
 
 document.getElementById('lnk-footer-rate').addEventListener('click', (e) => {
   e.preventDefault();

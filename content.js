@@ -49,11 +49,28 @@ async function courseraFetch(url, options = {}) {
 }
 
 function getCourseContext() {
-  const match = window.location.href.match(
-    /\/learn\/([^/]+)\/(lecture|supplement|quiz|programming)\/([^/?#]+)/
+  const href = window.location.href;
+  
+  // 1. Standard lesson types
+  const match = href.match(
+    /\/learn\/([^/]+)\/(lecture|supplement|quiz|programming|peer)\/([^/?#]+)/
   );
-  if (!match) return null;
-  return { courseSlug: match[1], itemType: match[2], itemId: match[3] };
+  if (match) {
+    return { courseSlug: match[1], itemType: match[2], itemId: match[3] };
+  }
+
+  // 2. Peer review URLs: /learn/{courseSlug}/peer/{peerId}/review/... or general /review/
+  const peerMatch = href.match(/\/learn\/([^/]+)\/(?:.*\/)?peer\/([^/?#]+)/);
+  if (peerMatch || href.includes('/review/')) {
+    const slugMatch = href.match(/\/learn\/([^/]+)/);
+    return {
+      courseSlug: slugMatch ? slugMatch[1] : 'coursera-course',
+      itemType: 'peer',
+      itemId: peerMatch ? peerMatch[2] : 'peer-review'
+    };
+  }
+
+  return null;
 }
 
 // ===== LẤY courseId VÀ userId =====
@@ -433,6 +450,114 @@ async function markAllItemsCompleted() {
   chrome.runtime.sendMessage({ action: 'progressUpdate', status: 'completed', current: total, total, message: `✅ Hoàn thành toàn bộ ${total} bài học!` });
 }
 
+// ===== AUTO PEER REVIEW =====
+
+const REVIEW_COMMENTS = [
+  "Great job! The submission meets all required criteria and is well-organized.",
+  "Very clear explanation and detailed work. Excellent solution!",
+  "Well-structured assignment with thorough reasoning. Keep up the good work!",
+  "Everything looks accurate, clearly presented, and satisfies all prompt requirements.",
+  "Impressive effort and solid execution. Thoroughly enjoyed reading through your submission."
+];
+
+function getRandomReviewComment() {
+  return REVIEW_COMMENTS[Math.floor(Math.random() * REVIEW_COMMENTS.length)];
+}
+
+function fillTextInput(el, text) {
+  if (!el) return;
+  el.focus();
+  el.click();
+  
+  try {
+    document.execCommand('selectAll', false, null);
+    document.execCommand('insertText', false, text);
+  } catch (_) {}
+
+  el.value = text;
+  el.dispatchEvent(new Event('input', { bubbles: true }));
+  el.dispatchEvent(new Event('change', { bubbles: true }));
+}
+
+async function autoGradePeerReview() {
+  console.log('[CourseraSkip] Starting Auto Peer Review...');
+
+  // 1. Quét các tiêu chí rubric
+  let rubricParts = document.querySelectorAll('.rc-FormPart, div[data-testid*="rubric"], .c-peer-review-rubric-item, fieldset, [role="radiogroup"]');
+  let optionsSelected = 0;
+  let textareasFilled = 0;
+
+  if (rubricParts && rubricParts.length > 0) {
+    for (const part of rubricParts) {
+      // Tìm các lựa chọn radio
+      const radios = part.querySelectorAll('input[type="radio"], .cds-checkboxAndRadio-label, [role="radio"]');
+      if (radios.length > 0) {
+        let bestRadio = radios[radios.length - 1]; // Mặc định chọn mức điểm cao nhất ở cuối
+        let maxScore = -1;
+
+        radios.forEach((r) => {
+          const labelText = r.closest('label')?.textContent || r.textContent || '';
+          const match = labelText.match(/(\d+)\s*(?:points?|pts?|điểm)/i);
+          if (match) {
+            const score = parseInt(match[1], 10);
+            if (score > maxScore) {
+              maxScore = score;
+              bestRadio = r;
+            }
+          }
+        });
+
+        bestRadio.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        bestRadio.click();
+        bestRadio.dispatchEvent(new Event('change', { bubbles: true }));
+        optionsSelected++;
+      }
+
+      // Điền nhận xét nếu có textarea trong tiêu chí này
+      const textareas = part.querySelectorAll('textarea, .c-peer-review-submit-textarea-input-field, div[data-testid*="multi-line-input-field"]');
+      for (const ta of textareas) {
+        if (!ta.value || ta.value.trim().length === 0) {
+          fillTextInput(ta, getRandomReviewComment());
+          textareasFilled++;
+        }
+      }
+    }
+  }
+
+  // Quét thêm bất kỳ ô textarea nào còn trống trên trang
+  const allTextareas = document.querySelectorAll('textarea, .c-peer-review-submit-textarea-input-field, div[data-testid*="multi-line-input-field"]');
+  for (const ta of allTextareas) {
+    if (!ta.value || ta.value.trim().length === 0) {
+      fillTextInput(ta, getRandomReviewComment());
+      textareasFilled++;
+    }
+  }
+
+  await sleep(600);
+
+  // 2. Tìm và bấm nút Nộp bài chấm (Submit Review)
+  const submitBtn = document.querySelector('.rc-FormSubmit button, button[data-testid*="submit-review"], button[type="submit"]') ||
+    Array.from(document.querySelectorAll('button')).find(b => {
+      const txt = (b.textContent || '').trim().toLowerCase();
+      return txt.includes('submit review') || txt.includes('nộp bài đánh giá') || txt.includes('submit');
+    });
+
+  if (submitBtn && !submitBtn.disabled) {
+    submitBtn.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    await sleep(400);
+    submitBtn.click();
+    return {
+      success: true,
+      message: `Đã chấm xong bài: chọn ${optionsSelected} tiêu chí tối đa, điền ${textareasFilled} nhận xét và bấm nộp!`
+    };
+  }
+
+  return {
+    success: true,
+    message: `Đã điền ${optionsSelected} tiêu chí và ${textareasFilled} nhận xét! Bạn có thể kiểm tra trước khi bấm nộp.`
+  };
+}
+
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message.action === 'markCompleted') {
     markCurrentItemCompleted()
@@ -443,6 +568,12 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message.action === 'markAllCompleted') {
     markAllItemsCompleted();
     sendResponse({ success: true, message: "Đã bắt đầu chạy ngầm." });
+    return true;
+  }
+  if (message.action === 'autoGradePeerReview') {
+    autoGradePeerReview()
+      .then(sendResponse)
+      .catch((err) => sendResponse({ success: false, error: `Lỗi: ${err.message}` }));
     return true;
   }
   if (message.action === 'getContext') {
