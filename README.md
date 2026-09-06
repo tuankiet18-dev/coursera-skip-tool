@@ -4,7 +4,7 @@
 </div>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-1.3.0-blue.svg" alt="Version">
+  <img src="https://img.shields.io/badge/version-1.4.0-blue.svg" alt="Version">
   <a href="https://chromewebstore.google.com/detail/coursera-skip-video-read/jjbgneddmjkolgmpamecbhfgjgdiajlf">
     <img src="https://img.shields.io/badge/Chrome_Web_Store-Install_1--Click-success?logo=googlechrome&logoColor=white" alt="Chrome Web Store">
   </a>
@@ -30,12 +30,13 @@ Unlike other versions circulating online that may contain harmful code (cookie s
 
 ## ✨ Features
 
+- **📌 In-Page Floating Widget (New in v1.4.0):** An always-available floating widget injected directly into Coursera course pages via Shadow DOM. Never gets closed or interrupted when clicking outside. Features a draggable header, collapsible FAB badge (`⚡`), and remembers its position and state in `localStorage`.
 - **⚡ Complete Current Lesson:** Instantly mark the currently opened Coursera video lecture or reading material as completed.
-- **🚀 Complete Entire Course (Bulk):** Automatically detect, batch-process, and complete all video lectures and reading items in the course.
-- **👥 Auto Peer Review (v1.2.0):** 1-Click grading for peer-reviewed assignments. Automatically selects maximum rubric scores, inputs natural positive feedback comments, and highlights submit button.
-- **💬 Auto Discussion Prompt (New in v1.3.0):** Automatically detects mandatory discussion prompts embedded in lectures and posts insightful, natural discussion responses via the official Coursera forum API to reach 100% lesson progress.
+- **🚀 Complete All Video & Reading (Bulk):** Automatically detect, batch-process, and complete all video lectures and reading items across the entire course.
+- **💬 Complete All Discussions (New in v1.4.0):** Batch-completes all mandatory discussion prompts across the course with rate-limit protection and automated response posting.
+- **👥 Auto Peer Review:** 1-Click grading for peer-reviewed assignments. Automatically selects maximum rubric scores, inputs natural positive feedback comments, and highlights submit button.
 - **⭐ Smart Review & Rating:** Easily support the project with a 5-star rating directly from within the extension.
-- **🌐 Internationalization (i18n):** Full support for **English** and **Vietnamese (Tiếng Việt)** with a 1-click header switcher `[🌐 EN | VI]`.
+- **🌐 Internationalization (i18n):** Full support for **English** and **Vietnamese (Tiếng Việt)** with a 1-click switcher `[🌐 EN | VI]` in both the floating widget and popup.
 - **✨ Clean & Friendly UI/UX:** Streamlined dark theme with zero clutter, clean course name formatting, and an intuitive 3-step guide screen.
 - **🔒 100% Secure & Open-Source:** Fully transparent code. Safe for your personal Coursera account.
 
@@ -60,15 +61,17 @@ Unlike other versions circulating online that may contain harmful code (cookie s
 
 ## 📖 How to Use (Step-by-Step)
 
-> [!IMPORTANT]
-> **Make sure you are viewing an active lesson page (Video or Reading)**. If you are on the course home or a non-lesson page, the extension will display a helpful 3-step setup guide.
-
 1. **Enroll** in your desired Coursera course.
-2. **Open any Video or Reading** lesson item (e.g., URL containing `/lecture/...` or `/supplement/...`).
-3. **Click the extension icon** in your browser toolbar:
-   - ⚡ **Complete Current Lesson**: Instantly marks the active video or reading material as finished.
-   - 🚀 **Complete Entire Course**: Automatically scans and completes all video lectures and reading items in the course.
-4. 🌐 **Language Switcher**: Click the `[🌐 EN | VI]` toggle in the top-right header anytime to switch between English and Vietnamese.
+2. **Open any page** in your course (e.g. `https://www.coursera.org/learn/{courseSlug}/...`).
+3. **Use either the In-Page Floating Widget or the Toolbar Extension Popup:**
+   - 📌 **In-Page Floating Widget**: Automatically appears in the bottom-right corner of any Coursera course page. You can drag it by the header, minimize it into a floating `⚡` badge, or keep it open while reading. Clicks elsewhere on the page will never interrupt its background operations!
+   - 🧩 **Extension Popup**: Or click the extension icon in your browser toolbar anytime.
+4. **Choose your desired automation action:**
+   - ⚡ **Complete Current Lesson**: Instantly marks the active video, reading material, or discussion prompt as finished.
+   - 🚀 **Complete All Video & Reading**: Batch processes and completes all video lectures & reading items across the entire course.
+   - 💬 **Complete All Discussions**: Scans all discussion prompt assignments in the course and posts natural responses automatically.
+   - 👥 **Auto Grade Peer Review**: When viewing a peer assignment, automatically grades with full marks and polite constructive feedback.
+5. 🌐 **Language Switcher**: Click `[VI / EN]` anytime to switch interface language.
 
 ## ❓ Frequently Asked Questions (FAQ)
 

@@ -260,11 +260,13 @@ async function markCompleted() {
 
     const result = await chrome.tabs.sendMessage(tab.id, { action: 'markCompleted' });
     if (result && result.success) {
-      showAlert('success', t('successCurrent'));
+      showAlert('success', result.message || t('successCurrent'));
       showRatingToast();
-      setTimeout(() => {
-        chrome.tabs.reload(tab.id);
-      }, 1200);
+      if (result.submitted !== false) {
+        setTimeout(() => {
+          chrome.tabs.reload(tab.id);
+        }, 1200);
+      }
     } else {
       const errorMsg = result?.error?.includes('403') || result?.error?.includes('401')
         ? t('notEnrolled')

@@ -423,19 +423,28 @@ async function getAllCourseItems(courseSlug) {
   }
 }
 
+function notifyProgress(data) {
+  try {
+    chrome.runtime.sendMessage({ action: 'progressUpdate', ...data });
+  } catch (_) {}
+  if (typeof updateFloatingWidgetProgress === 'function') {
+    updateFloatingWidgetProgress(data);
+  }
+}
+
 async function markAllItemsCompleted() {
   const context = getCourseContext();
   if (!context) {
-    chrome.runtime.sendMessage({ action: 'progressUpdate', status: 'error', code: 'NO_CONTEXT', message: 'Không tìm thấy bài học. Hãy vào trang bài học.' });
+    notifyProgress({ status: 'error', code: 'NO_CONTEXT', message: 'Không tìm thấy bài học. Hãy vào trang bài học.' });
     return;
   }
 
   const { courseSlug } = context;
-  chrome.runtime.sendMessage({ action: 'progressUpdate', status: 'loading', code: 'FETCHING_CURRICULUM', message: 'Đang tải danh sách bài học...' });
+  notifyProgress({ status: 'loading', code: 'FETCHING_CURRICULUM', message: 'Đang tải danh sách bài học...' });
 
   const material = await getAllCourseItems(courseSlug);
   if (!material || !material.linked || !material.linked['onDemandCourseMaterialItems.v2']) {
-    chrome.runtime.sendMessage({ action: 'progressUpdate', status: 'error', code: 'FETCH_FAILED', message: 'Không lấy được giáo trình khóa học.' });
+    notifyProgress({ status: 'error', code: 'FETCH_FAILED', message: 'Không lấy được giáo trình khóa học.' });
     return;
   }
 
@@ -447,24 +456,24 @@ async function markAllItemsCompleted() {
   let completed = 0;
   
   if (total === 0) {
-    chrome.runtime.sendMessage({ action: 'progressUpdate', status: 'error', code: 'NO_ITEMS', message: 'Không tìm thấy video hoặc bài đọc nào!' });
+    notifyProgress({ status: 'error', code: 'NO_ITEMS', message: 'Không tìm thấy video hoặc bài đọc nào!' });
     return;
   }
 
   const courseId = material.elements?.[0]?.id;
   if (!courseId) {
-    chrome.runtime.sendMessage({ action: 'progressUpdate', status: 'error', code: 'NO_COURSE_ID', message: 'Không lấy được ID khóa học.' });
+    notifyProgress({ status: 'error', code: 'NO_COURSE_ID', message: 'Không lấy được ID khóa học.' });
     return;
   }
 
   const userId = await getUserId(courseId);
   if (!userId) {
-    chrome.runtime.sendMessage({ action: 'progressUpdate', status: 'error', code: 'NO_USER_ID', message: 'Không lấy được User ID. Vui lòng đăng nhập Coursera.' });
+    notifyProgress({ status: 'error', code: 'NO_USER_ID', message: 'Không lấy được User ID. Vui lòng đăng nhập Coursera.' });
     return;
   }
 
   const batchSize = 5;
-  chrome.runtime.sendMessage({ action: 'progressUpdate', status: 'starting', current: 0, total, message: `Bắt đầu xử lý ${total} bài học...` });
+  notifyProgress({ status: 'starting', current: 0, total, message: `Bắt đầu xử lý ${total} bài học...` });
 
   for (let i = 0; i < total; i += batchSize) {
     const batch = items.slice(i, i + batchSize);
@@ -483,7 +492,7 @@ async function markAllItemsCompleted() {
     }));
     
     completed = Math.min(completed + batch.length, total);
-    chrome.runtime.sendMessage({ action: 'progressUpdate', status: 'progress', current: completed, total, message: `Đang xử lý: ${completed} / ${total}` });
+    notifyProgress({ status: 'progress', current: completed, total, message: `Đang xử lý: ${completed} / ${total}` });
     
     // Tạm nghỉ 2s giữa các batch để tránh bị server Coursera rate limit
     if (completed < total) {
@@ -491,22 +500,22 @@ async function markAllItemsCompleted() {
     }
   }
 
-  chrome.runtime.sendMessage({ action: 'progressUpdate', status: 'completed', current: total, total, message: `✅ Hoàn thành toàn bộ ${total} bài học Video & Reading!` });
+  notifyProgress({ status: 'completed', current: total, total, message: `✅ Hoàn thành toàn bộ ${total} bài học Video & Reading!` });
 }
 
 async function markAllDiscussionsCompleted() {
   const context = getCourseContext();
   if (!context || !context.courseSlug) {
-    chrome.runtime.sendMessage({ action: 'progressUpdate', status: 'error', code: 'NO_CONTEXT', message: 'Không nhận diện được khóa học. Hãy mở trang khóa học Coursera.' });
+    notifyProgress({ status: 'error', code: 'NO_CONTEXT', message: 'Không nhận diện được khóa học. Hãy mở trang khóa học Coursera.' });
     return;
   }
 
   const { courseSlug } = context;
-  chrome.runtime.sendMessage({ action: 'progressUpdate', status: 'loading', code: 'FETCHING_CURRICULUM', message: 'Đang tải danh sách bài thảo luận...' });
+  notifyProgress({ status: 'loading', code: 'FETCHING_CURRICULUM', message: 'Đang tải danh sách bài thảo luận...' });
 
   const material = await getAllCourseItems(courseSlug);
   if (!material || !material.linked || !material.linked['onDemandCourseMaterialItems.v2']) {
-    chrome.runtime.sendMessage({ action: 'progressUpdate', status: 'error', code: 'FETCH_FAILED', message: 'Không lấy được giáo trình khóa học.' });
+    notifyProgress({ status: 'error', code: 'FETCH_FAILED', message: 'Không lấy được giáo trình khóa học.' });
     return;
   }
 
@@ -517,24 +526,24 @@ async function markAllDiscussionsCompleted() {
 
   const total = discussionItems.length;
   if (total === 0) {
-    chrome.runtime.sendMessage({ action: 'progressUpdate', status: 'error', code: 'NO_ITEMS', message: 'Khóa học này không có bài thảo luận (Discussion Prompt) nào!' });
+    notifyProgress({ status: 'error', code: 'NO_ITEMS', message: 'Khóa học này không có bài thảo luận (Discussion Prompt) nào!' });
     return;
   }
 
   const courseId = material.elements?.[0]?.id || await getCourseId(courseSlug);
   if (!courseId) {
-    chrome.runtime.sendMessage({ action: 'progressUpdate', status: 'error', code: 'NO_COURSE_ID', message: 'Không lấy được ID khóa học.' });
+    notifyProgress({ status: 'error', code: 'NO_COURSE_ID', message: 'Không lấy được ID khóa học.' });
     return;
   }
 
   const userId = await getUserId(courseId);
   if (!userId) {
-    chrome.runtime.sendMessage({ action: 'progressUpdate', status: 'error', code: 'NO_USER_ID', message: 'Không lấy được User ID. Vui lòng đăng nhập Coursera.' });
+    notifyProgress({ status: 'error', code: 'NO_USER_ID', message: 'Không lấy được User ID. Vui lòng đăng nhập Coursera.' });
     return;
   }
 
   const csrfToken = getCsrfToken();
-  chrome.runtime.sendMessage({ action: 'progressUpdate', status: 'starting', current: 0, total, message: `Bắt đầu xử lý ${total} bài thảo luận...` });
+  notifyProgress({ status: 'starting', current: 0, total, message: `Bắt đầu xử lý ${total} bài thảo luận...` });
 
   let completed = 0;
   for (let i = 0; i < total; i++) {
@@ -583,8 +592,7 @@ async function markAllDiscussionsCompleted() {
     }
 
     completed++;
-    chrome.runtime.sendMessage({
-      action: 'progressUpdate',
+    notifyProgress({
       status: 'progress',
       current: completed,
       total,
@@ -597,8 +605,7 @@ async function markAllDiscussionsCompleted() {
     }
   }
 
-  chrome.runtime.sendMessage({
-    action: 'progressUpdate',
+  notifyProgress({
     status: 'completed',
     current: total,
     total,
@@ -1078,4 +1085,780 @@ async function autoPostDiscussion() {
   console.log('[CourseraSkip] Running DOM fallback for discussion post with polling...');
   return await postDiscussionViaDOM(answerText);
 }
+
+// =========================================================================
+// ===== IN-PAGE FLOATING WIDGET (Giao diện cố định trên trang Coursera) =====
+// =========================================================================
+
+const WIDGET_I18N = {
+  vi: {
+    langBadge: 'VI',
+    detected: 'ĐÃ NHẬN DIỆN BÀI HỌC',
+    courseOverview: 'Trang tổng quan khóa học',
+    typeLabel: 'Loại bài',
+    btnCurrent: 'Hoàn thành bài hiện tại',
+    btnBulkVR: 'Hoàn thành toàn bộ Video & Reading',
+    btnBulkDisc: 'Hoàn thành toàn bộ Discussion',
+    btnPeer: 'Tự động chấm bài bạn học',
+    processingCurrent: 'Đang xử lý...',
+    processingBulk: 'Đang khởi động...',
+    rateToastMsg: 'Tiết kiệm thời gian? Đánh giá 5★ trên Cửa hàng nhé!'
+  },
+  en: {
+    langBadge: 'EN',
+    detected: 'LESSON DETECTED',
+    courseOverview: 'Course Overview',
+    typeLabel: 'Type',
+    btnCurrent: 'Complete Current Lesson',
+    btnBulkVR: 'Complete All Video & Reading',
+    btnBulkDisc: 'Complete All Discussions',
+    btnPeer: 'Auto Grade Peer Review',
+    processingCurrent: 'Completing...',
+    processingBulk: 'Starting...',
+    rateToastMsg: 'Saved your time? Rate 5★ on Chrome Web Store!'
+  }
+};
+
+let widgetShadow = null;
+let currentWidgetLang = localStorage.getItem('coursera_skip_lang') || (navigator.language?.startsWith('vi') ? 'vi' : 'en');
+let isWidgetProcessing = false;
+
+function wt(key) {
+  const dict = WIDGET_I18N[currentWidgetLang] || WIDGET_I18N.vi;
+  return dict[key] || WIDGET_I18N.vi[key] || key;
+}
+
+function updateFloatingWidgetProgress(data) {
+  if (!widgetShadow) return;
+  const wrap = widgetShadow.getElementById('cs-progress-wrap');
+  const msgEl = widgetShadow.getElementById('cs-prog-msg');
+  const pctEl = widgetShadow.getElementById('cs-prog-pct');
+  const fillEl = widgetShadow.getElementById('cs-prog-bar-fill');
+  const currentBtn = widgetShadow.getElementById('cs-btn-current');
+  const vrBtn = widgetShadow.getElementById('cs-btn-bulk-vr');
+  const discBtn = widgetShadow.getElementById('cs-btn-bulk-disc');
+
+  if (!wrap || !msgEl || !pctEl || !fillEl) return;
+
+  if (data.status === 'loading' || data.status === 'starting' || data.status === 'progress') {
+    wrap.style.display = 'block';
+    isWidgetProcessing = true;
+    if (vrBtn) vrBtn.disabled = true;
+    if (discBtn) discBtn.disabled = true;
+    if (currentBtn) currentBtn.disabled = true;
+
+    const current = data.current || 0;
+    const total = data.total || 1;
+    const pct = Math.min(100, Math.round((current / total) * 100));
+
+    pctEl.textContent = `${pct}%`;
+    fillEl.style.width = `${pct}%`;
+    msgEl.textContent = data.message || `Đang xử lý: ${current} / ${total}`;
+  } else if (data.status === 'completed') {
+    wrap.style.display = 'block';
+    fillEl.style.width = '100%';
+    pctEl.textContent = '100%';
+    msgEl.textContent = data.message || '✅ Hoàn thành!';
+    isWidgetProcessing = false;
+    if (vrBtn) { vrBtn.disabled = false; vrBtn.classList.remove('loading'); }
+    if (discBtn) { discBtn.disabled = false; discBtn.classList.remove('loading'); }
+    if (currentBtn) { currentBtn.disabled = false; currentBtn.classList.remove('loading'); }
+
+    setTimeout(() => {
+      window.location.reload();
+    }, 1800);
+  } else if (data.status === 'error') {
+    wrap.style.display = 'none';
+    isWidgetProcessing = false;
+    if (vrBtn) { vrBtn.disabled = false; vrBtn.classList.remove('loading'); }
+    if (discBtn) { discBtn.disabled = false; discBtn.classList.remove('loading'); }
+    if (currentBtn) { currentBtn.disabled = false; currentBtn.classList.remove('loading'); }
+    showWidgetAlert('error', data.message || 'Đã xảy ra lỗi.');
+  }
+}
+
+function showWidgetAlert(type, message) {
+  if (!widgetShadow) return;
+  const alertEl = widgetShadow.getElementById('cs-alert');
+  if (!alertEl) return;
+  alertEl.style.display = 'block';
+  alertEl.className = `cs-alert cs-alert-${type}`;
+  alertEl.textContent = message;
+  setTimeout(() => {
+    if (alertEl) alertEl.style.display = 'none';
+  }, 6000);
+}
+
+function updateWidgetContext() {
+  if (!widgetShadow) return;
+  const ctx = getCourseContext();
+
+  const statusCard = widgetShadow.getElementById('cs-status-card');
+  const courseNameEl = widgetShadow.getElementById('cs-course-name');
+  const typeTextEl = widgetShadow.getElementById('cs-type-text');
+  const typeIconEl = widgetShadow.getElementById('cs-type-icon');
+  const currentBtn = widgetShadow.getElementById('cs-btn-current');
+  const peerBtn = widgetShadow.getElementById('cs-btn-peer');
+
+  if (!ctx || !ctx.courseSlug) {
+    if (statusCard) statusCard.style.display = 'none';
+    return;
+  }
+
+  if (statusCard) statusCard.style.display = 'block';
+  if (courseNameEl) {
+    const formattedSlug = ctx.courseSlug
+      .split(/[-_]/)
+      .map((w) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())
+      .join(' ');
+    courseNameEl.textContent = formattedSlug;
+  }
+
+  const typeConfigMap = {
+    course: { icon: '🎓', en: 'Course Overview', vi: 'Trang khóa học' },
+    lecture: { icon: '🎬', en: 'Video Lecture', vi: 'Bài giảng Video' },
+    supplement: { icon: '📖', en: 'Reading Material', vi: 'Tài liệu Đọc' },
+    quiz: { icon: '📝', en: 'Quiz Assessment', vi: 'Bài kiểm tra (Quiz)' },
+    programming: { icon: '💻', en: 'Programming Lab', vi: 'Bài tập Thực hành' },
+    peer: { icon: '👥', en: 'Peer Review', vi: 'Bài tập Chấm chéo' },
+    discussionPrompt: { icon: '💬', en: 'Discussion Prompt', vi: 'Câu hỏi thảo luận' },
+    dialogue: { icon: '💬', en: 'Dialogue', vi: 'Hội thoại (Dialogue)' },
+  };
+
+  const currentType = ctx.itemType || 'course';
+  const cfg = typeConfigMap[currentType] || { icon: '📄', en: currentType, vi: currentType };
+
+  if (typeIconEl) typeIconEl.textContent = cfg.icon;
+  if (typeTextEl) typeTextEl.textContent = currentWidgetLang === 'vi' ? cfg.vi : cfg.en;
+
+  // Toggle peer button vs current button
+  if (currentType === 'peer') {
+    if (peerBtn) peerBtn.style.display = 'flex';
+    if (currentBtn) currentBtn.style.display = 'none';
+  } else {
+    if (peerBtn) peerBtn.style.display = 'none';
+    if (currentBtn) currentBtn.style.display = 'flex';
+  }
+}
+
+function updateWidgetLanguageUI() {
+  if (!widgetShadow) return;
+  const langBtn = widgetShadow.getElementById('cs-lang-btn');
+  const statusLabel = widgetShadow.getElementById('cs-status-label');
+  const metaLabel = widgetShadow.getElementById('cs-meta-type-label');
+  const txtCurrent = widgetShadow.getElementById('cs-txt-current');
+  const txtBulkVR = widgetShadow.getElementById('cs-txt-bulk-vr');
+  const txtBulkDisc = widgetShadow.getElementById('cs-txt-bulk-disc');
+  const txtPeer = widgetShadow.getElementById('cs-txt-peer');
+
+  if (langBtn) langBtn.textContent = wt('langBadge');
+  if (statusLabel) statusLabel.textContent = wt('detected');
+  if (metaLabel) metaLabel.textContent = wt('typeLabel');
+  if (txtCurrent) txtCurrent.textContent = wt('btnCurrent');
+  if (txtBulkVR) txtBulkVR.textContent = wt('btnBulkVR');
+  if (txtBulkDisc) txtBulkDisc.textContent = wt('btnBulkDisc');
+  if (txtPeer) txtPeer.textContent = wt('btnPeer');
+
+  updateWidgetContext();
+}
+
+function initFloatingWidget() {
+  // Chỉ tạo nếu đang ở trang khóa học và chưa tồn tại widget
+  if (document.getElementById('coursera-skip-widget-host')) return;
+  if (!window.location.href.includes('/learn/')) return;
+
+  const host = document.createElement('div');
+  host.id = 'coursera-skip-widget-host';
+  widgetShadow = host.attachShadow({ mode: 'open' });
+
+  const style = document.createElement('style');
+  style.textContent = `
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :host {
+      all: initial;
+      position: fixed;
+      bottom: 24px;
+      right: 24px;
+      z-index: 2147483647;
+      font-family: 'Inter', system-ui, -apple-system, sans-serif;
+      font-size: 13px;
+      user-select: none;
+      line-height: 1.4;
+    }
+
+    /* Floating Badge (Collapsed FAB) */
+    .cs-badge {
+      display: none;
+      width: 50px;
+      height: 50px;
+      border-radius: 50%;
+      background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
+      box-shadow: 0 6px 20px rgba(99, 102, 241, 0.45);
+      cursor: pointer;
+      align-items: center;
+      justify-content: center;
+      position: relative;
+      transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+      border: 2px solid rgba(255, 255, 255, 0.2);
+    }
+    .cs-badge:hover {
+      transform: scale(1.08) translateY(-2px);
+      box-shadow: 0 10px 25px rgba(99, 102, 241, 0.6);
+    }
+    .cs-badge-icon {
+      font-size: 22px;
+      line-height: 1;
+      filter: drop-shadow(0 2px 4px rgba(0,0,0,0.3));
+    }
+    .cs-badge-pulse {
+      position: absolute;
+      top: -2px;
+      right: -2px;
+      width: 12px;
+      height: 12px;
+      border-radius: 50%;
+      background: #10b981;
+      border: 2px solid #0f172a;
+      box-shadow: 0 0 8px #10b981;
+    }
+
+    /* Main Floating Panel */
+    .cs-panel {
+      width: 320px;
+      background: #0f172a;
+      background-image: 
+        radial-gradient(circle at 10% 10%, rgba(99, 102, 241, 0.2) 0%, transparent 50%),
+        radial-gradient(circle at 90% 90%, rgba(16, 185, 129, 0.15) 0%, transparent 50%);
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      border-radius: 16px;
+      box-shadow: 0 16px 36px rgba(0, 0, 0, 0.55), 0 0 0 1px rgba(255, 255, 255, 0.05);
+      color: #f8fafc;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+      animation: csFadeIn 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+
+    /* Header (Draggable) */
+    .cs-header {
+      padding: 12px 14px;
+      background: rgba(30, 41, 59, 0.6);
+      backdrop-filter: blur(8px);
+      border-bottom: 1px solid rgba(255, 255, 255, 0.07);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      cursor: move;
+    }
+    .cs-brand {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .cs-logo {
+      width: 24px;
+      height: 24px;
+      border-radius: 6px;
+      background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 13px;
+      box-shadow: 0 2px 6px rgba(99, 102, 241, 0.4);
+    }
+    .cs-title {
+      font-size: 13px;
+      font-weight: 700;
+      color: #ffffff;
+      letter-spacing: -0.01em;
+    }
+    .cs-header-actions {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .cs-pill-btn {
+      background: rgba(255, 255, 255, 0.08);
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      color: #a5b4fc;
+      border-radius: 12px;
+      padding: 2px 7px;
+      font-size: 10px;
+      font-weight: 700;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    .cs-pill-btn:hover {
+      background: rgba(255, 255, 255, 0.15);
+      color: #fff;
+    }
+    .cs-icon-btn {
+      background: transparent;
+      border: none;
+      color: #94a3b8;
+      width: 24px;
+      height: 24px;
+      border-radius: 6px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 14px;
+      transition: all 0.2s;
+    }
+    .cs-icon-btn:hover {
+      background: rgba(255, 255, 255, 0.1);
+      color: #fff;
+    }
+
+    /* Body */
+    .cs-body {
+      padding: 12px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    /* Alert Banner */
+    .cs-alert {
+      padding: 8px 10px;
+      border-radius: 8px;
+      font-size: 11px;
+      font-weight: 500;
+      line-height: 1.35;
+      animation: csFadeIn 0.2s ease;
+    }
+    .cs-alert-success {
+      background: rgba(16, 185, 129, 0.15);
+      border: 1px solid rgba(16, 185, 129, 0.3);
+      color: #34d399;
+    }
+    .cs-alert-error {
+      background: rgba(239, 68, 68, 0.15);
+      border: 1px solid rgba(239, 68, 68, 0.3);
+      color: #f87171;
+    }
+
+    /* Status Card */
+    .cs-status-card {
+      background: rgba(30, 41, 59, 0.7);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      border-radius: 10px;
+      padding: 10px 12px;
+    }
+    .cs-status-top {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 9px;
+      font-weight: 700;
+      letter-spacing: 0.05em;
+      color: #10b981;
+      margin-bottom: 6px;
+      text-transform: uppercase;
+    }
+    .cs-pulse-dot {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: #10b981;
+      box-shadow: 0 0 6px #10b981;
+      animation: csPulse 1.8s infinite;
+    }
+    .cs-course-name {
+      font-size: 13px;
+      font-weight: 600;
+      color: #f1f5f9;
+      margin-bottom: 6px;
+      line-height: 1.3;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .cs-meta-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding-top: 6px;
+      border-top: 1px solid rgba(255, 255, 255, 0.05);
+    }
+    .cs-meta-label {
+      color: #64748b;
+      font-size: 11px;
+    }
+    .cs-type-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      padding: 2px 6px;
+      border-radius: 6px;
+      font-size: 11px;
+      font-weight: 600;
+      background: rgba(99, 102, 241, 0.15);
+      color: #a5b4fc;
+      border: 1px solid rgba(99, 102, 241, 0.25);
+    }
+
+    /* Buttons */
+    .cs-actions {
+      display: flex;
+      flex-direction: column;
+      gap: 7px;
+    }
+    .cs-btn {
+      width: 100%;
+      border: none;
+      padding: 9px 12px;
+      border-radius: 8px;
+      font-family: inherit;
+      font-size: 12px;
+      font-weight: 600;
+      color: #fff;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      transition: all 0.2s ease;
+      position: relative;
+    }
+    .cs-btn:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+      transform: none !important;
+    }
+    .cs-btn-primary {
+      background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
+      box-shadow: 0 2px 8px rgba(99, 102, 241, 0.3);
+    }
+    .cs-btn-primary:hover:not(:disabled) {
+      transform: translateY(-1px);
+      box-shadow: 0 4px 12px rgba(99, 102, 241, 0.45);
+    }
+    .cs-btn-magic {
+      background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+      box-shadow: 0 2px 8px rgba(16, 185, 129, 0.25);
+    }
+    .cs-btn-magic:hover:not(:disabled) {
+      transform: translateY(-1px);
+      box-shadow: 0 4px 12px rgba(16, 185, 129, 0.4);
+    }
+    .cs-btn-discuss {
+      background: linear-gradient(135deg, #0ea5e9 0%, #0284c7 100%);
+      box-shadow: 0 2px 8px rgba(14, 165, 233, 0.25);
+    }
+    .cs-btn-discuss:hover:not(:disabled) {
+      transform: translateY(-1px);
+      box-shadow: 0 4px 12px rgba(14, 165, 233, 0.4);
+    }
+
+    /* Progress UI */
+    .cs-progress-wrap {
+      background: rgba(30, 41, 59, 0.7);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      border-radius: 8px;
+      padding: 8px 10px;
+      animation: csFadeIn 0.2s ease;
+    }
+    .cs-progress-info {
+      font-size: 11px;
+      color: #38bdf8;
+      font-weight: 600;
+      margin-bottom: 5px;
+      display: flex;
+      justify-content: space-between;
+    }
+    .cs-prog-bar-bg {
+      width: 100%;
+      height: 5px;
+      background: rgba(0, 0, 0, 0.35);
+      border-radius: 3px;
+      overflow: hidden;
+    }
+    .cs-prog-bar-fill {
+      height: 100%;
+      background: linear-gradient(90deg, #38bdf8, #818cf8);
+      width: 0%;
+      transition: width 0.3s ease;
+    }
+
+    /* Spinner */
+    .cs-spinner {
+      display: none;
+      width: 13px;
+      height: 13px;
+      border: 2px solid rgba(255, 255, 255, 0.3);
+      border-radius: 50%;
+      border-top-color: #fff;
+      animation: csSpin 0.8s linear infinite;
+    }
+    .cs-btn.loading .cs-spinner { display: block; }
+    .cs-btn.loading .cs-btn-icon { display: none; }
+
+    @keyframes csSpin { to { transform: rotate(360deg); } }
+    @keyframes csPulse { 0%, 100% { opacity: 1; transform: scale(1); } 50% { opacity: 0.5; transform: scale(0.9); } }
+    @keyframes csFadeIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
+  `;
+
+  const container = document.createElement('div');
+  container.className = 'cs-widget-root';
+  container.innerHTML = `
+    <!-- Floating Badge -->
+    <div class="cs-badge" id="cs-badge" title="Coursera Skip Tool">
+      <div class="cs-badge-icon">⚡</div>
+      <span class="cs-badge-pulse"></span>
+    </div>
+
+    <!-- Main Panel -->
+    <div class="cs-panel" id="cs-panel">
+      <!-- Header -->
+      <div class="cs-header" id="cs-header">
+        <div class="cs-brand">
+          <div class="cs-logo">⚡</div>
+          <span class="cs-title">Coursera Skip</span>
+        </div>
+        <div class="cs-header-actions">
+          <button class="cs-pill-btn" id="cs-lang-btn" title="Switch Language">VI</button>
+          <button class="cs-icon-btn" id="cs-min-btn" title="Thu nhỏ">─</button>
+        </div>
+      </div>
+
+      <!-- Body -->
+      <div class="cs-body">
+        <div class="cs-alert" id="cs-alert" style="display: none;"></div>
+
+        <!-- Status Card -->
+        <div class="cs-status-card" id="cs-status-card">
+          <div class="cs-status-top">
+            <span class="cs-pulse-dot"></span>
+            <span class="cs-status-label" id="cs-status-label">ĐÃ NHẬN DIỆN BÀI HỌC</span>
+          </div>
+          <div class="cs-course-name" id="cs-course-name">--</div>
+          <div class="cs-meta-row">
+            <span class="cs-meta-label" id="cs-meta-type-label">Loại bài</span>
+            <span class="cs-type-badge" id="cs-type-badge">
+              <span id="cs-type-icon">🎬</span>
+              <span id="cs-type-text">--</span>
+            </span>
+          </div>
+        </div>
+
+        <!-- Action Buttons -->
+        <div class="cs-actions">
+          <button class="cs-btn cs-btn-primary" id="cs-btn-current">
+            <span class="cs-btn-icon">⚡</span>
+            <div class="cs-spinner"></div>
+            <span class="cs-btn-text" id="cs-txt-current">Hoàn thành bài hiện tại</span>
+          </button>
+
+          <button class="cs-btn cs-btn-magic" id="cs-btn-bulk-vr">
+            <span class="cs-btn-icon">🚀</span>
+            <div class="cs-spinner"></div>
+            <span class="cs-btn-text" id="cs-txt-bulk-vr">Hoàn thành toàn bộ Video & Reading</span>
+          </button>
+
+          <button class="cs-btn cs-btn-discuss" id="cs-btn-bulk-disc">
+            <span class="cs-btn-icon">💬</span>
+            <div class="cs-spinner"></div>
+            <span class="cs-btn-text" id="cs-txt-bulk-disc">Hoàn thành toàn bộ Discussion</span>
+          </button>
+
+          <button class="cs-btn cs-btn-magic" id="cs-btn-peer" style="display: none;">
+            <span class="cs-btn-icon">👥</span>
+            <div class="cs-spinner"></div>
+            <span class="cs-btn-text" id="cs-txt-peer">Tự động chấm bài bạn học</span>
+          </button>
+        </div>
+
+        <!-- Progress UI -->
+        <div class="cs-progress-wrap" id="cs-progress-wrap" style="display: none;">
+          <div class="cs-progress-info">
+            <span class="cs-prog-msg" id="cs-prog-msg">Đang khởi tạo...</span>
+            <span class="cs-prog-pct" id="cs-prog-pct">0%</span>
+          </div>
+          <div class="cs-prog-bar-bg">
+            <div class="cs-prog-bar-fill" id="cs-prog-bar-fill"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  `;
+
+  widgetShadow.appendChild(style);
+  widgetShadow.appendChild(container);
+  document.body.appendChild(host);
+
+  // Setup DOM elements
+  const badgeEl = widgetShadow.getElementById('cs-badge');
+  const panelEl = widgetShadow.getElementById('cs-panel');
+  const minBtn = widgetShadow.getElementById('cs-min-btn');
+  const langBtn = widgetShadow.getElementById('cs-lang-btn');
+  const headerEl = widgetShadow.getElementById('cs-header');
+
+  const btnCurrent = widgetShadow.getElementById('cs-btn-current');
+  const btnBulkVR = widgetShadow.getElementById('cs-btn-bulk-vr');
+  const btnBulkDisc = widgetShadow.getElementById('cs-btn-bulk-disc');
+  const btnPeer = widgetShadow.getElementById('cs-btn-peer');
+
+  // Load saved minimize state
+  const isMinimized = localStorage.getItem('coursera_skip_widget_minimized') === 'true';
+  if (isMinimized) {
+    badgeEl.style.display = 'flex';
+    panelEl.style.display = 'none';
+  } else {
+    badgeEl.style.display = 'none';
+    panelEl.style.display = 'flex';
+  }
+
+  // Load saved position
+  try {
+    const savedPos = JSON.parse(localStorage.getItem('coursera_skip_widget_pos'));
+    if (savedPos && savedPos.left && savedPos.top) {
+      host.style.bottom = 'auto';
+      host.style.right = 'auto';
+      host.style.left = `${Math.min(window.innerWidth - 80, Math.max(10, savedPos.left))}px`;
+      host.style.top = `${Math.min(window.innerHeight - 80, Math.max(10, savedPos.top))}px`;
+    }
+  } catch (_) {}
+
+  // Minimize / Expand logic
+  minBtn.addEventListener('click', () => {
+    panelEl.style.display = 'none';
+    badgeEl.style.display = 'flex';
+    localStorage.setItem('coursera_skip_widget_minimized', 'true');
+  });
+
+  badgeEl.addEventListener('click', () => {
+    badgeEl.style.display = 'none';
+    panelEl.style.display = 'flex';
+    localStorage.setItem('coursera_skip_widget_minimized', 'false');
+    updateWidgetContext();
+  });
+
+  // Language switch
+  langBtn.addEventListener('click', () => {
+    currentWidgetLang = currentWidgetLang === 'vi' ? 'en' : 'vi';
+    localStorage.setItem('coursera_skip_lang', currentWidgetLang);
+    updateWidgetLanguageUI();
+  });
+
+  // Draggable logic on header
+  let isDragging = false;
+  let dragOffsetX = 0;
+  let dragOffsetY = 0;
+
+  headerEl.addEventListener('mousedown', (e) => {
+    if (e.target.closest('button')) return; // Không kéo khi click button
+    isDragging = true;
+    const rect = host.getBoundingClientRect();
+    dragOffsetX = e.clientX - rect.left;
+    dragOffsetY = e.clientY - rect.top;
+    headerEl.style.cursor = 'grabbing';
+  });
+
+  window.addEventListener('mousemove', (e) => {
+    if (!isDragging) return;
+    const newLeft = e.clientX - dragOffsetX;
+    const newTop = e.clientY - dragOffsetY;
+
+    const clampedX = Math.max(10, Math.min(window.innerWidth - 340, newLeft));
+    const clampedY = Math.max(10, Math.min(window.innerHeight - 150, newTop));
+
+    host.style.bottom = 'auto';
+    host.style.right = 'auto';
+    host.style.left = `${clampedX}px`;
+    host.style.top = `${clampedY}px`;
+  });
+
+  window.addEventListener('mouseup', () => {
+    if (!isDragging) return;
+    isDragging = false;
+    headerEl.style.cursor = 'move';
+    const rect = host.getBoundingClientRect();
+    localStorage.setItem('coursera_skip_widget_pos', JSON.stringify({ left: rect.left, top: rect.top }));
+  });
+
+  // Action: Hoàn thành bài hiện tại
+  btnCurrent.addEventListener('click', async () => {
+    if (isWidgetProcessing) return;
+    btnCurrent.classList.add('loading');
+    btnCurrent.disabled = true;
+
+    try {
+      const res = await markCurrentItemCompleted();
+      if (res && res.success) {
+        showWidgetAlert('success', res.message || '✅ Đã hoàn thành bài học!');
+        if (res.submitted !== false) {
+          setTimeout(() => { window.location.reload(); }, 1800);
+        }
+      } else {
+        showWidgetAlert('error', res?.error || res?.message || 'Có lỗi xảy ra.');
+      }
+    } catch (err) {
+      showWidgetAlert('error', err.message || 'Lỗi không xác định.');
+    } finally {
+      btnCurrent.classList.remove('loading');
+      btnCurrent.disabled = false;
+    }
+  });
+
+  // Action: Hoàn thành toàn bộ Video & Reading
+  btnBulkVR.addEventListener('click', async () => {
+    if (isWidgetProcessing) return;
+    btnBulkVR.classList.add('loading');
+    btnBulkVR.disabled = true;
+    markAllItemsCompleted();
+  });
+
+  // Action: Hoàn thành toàn bộ Discussion
+  btnBulkDisc.addEventListener('click', async () => {
+    if (isWidgetProcessing) return;
+    btnBulkDisc.classList.add('loading');
+    btnBulkDisc.disabled = true;
+    markAllDiscussionsCompleted();
+  });
+
+  // Action: Chấm bài Peer Review
+  if (btnPeer) {
+    btnPeer.addEventListener('click', async () => {
+      if (isWidgetProcessing) return;
+      btnPeer.classList.add('loading');
+      btnPeer.disabled = true;
+      try {
+        const res = await autoGradePeerReview();
+        if (res && res.success) {
+          showWidgetAlert('success', res.message);
+        } else {
+          showWidgetAlert('error', res?.error || 'Có lỗi khi chấm bài.');
+        }
+      } catch (err) {
+        showWidgetAlert('error', err.message || 'Lỗi.');
+      } finally {
+        btnPeer.classList.remove('loading');
+        btnPeer.disabled = false;
+      }
+    });
+  }
+
+  // Initial render
+  updateWidgetLanguageUI();
+
+  // Watch for SPA navigation changes
+  let lastUrl = window.location.href;
+  setInterval(() => {
+    if (window.location.href !== lastUrl) {
+      lastUrl = window.location.href;
+      updateWidgetContext();
+    }
+  }, 1200);
+}
+
+// Khởi chạy widget tự động khi DOM sẵn sàng
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', initFloatingWidget);
+} else {
+  initFloatingWidget();
+}
+
 
