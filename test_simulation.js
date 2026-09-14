@@ -369,7 +369,7 @@ function createSandbox(initialUrl = 'https://www.coursera.org/learn/sample-cours
 }
 
 let passedCount = 0;
-const totalCount = 12;
+let totalCount = 12;
 
 async function runTests() {
   // -------------------------------------------------------------
@@ -786,6 +786,171 @@ async function runTests() {
     assert.strictEqual(lastProgress.failedCount, 1);
     assert.strictEqual(sb._reloaded, false, 'Page must NOT be auto-reloaded on partial status');
     console.log('  -> PASS: bulk with partial success reported status=partial and did not reload\n');
+    passedCount++;
+  }
+
+  // ===================================================================
+  // GRADED QUIZ TESTS (v1.5.0)
+  // ===================================================================
+
+  // TC-13: getCourseContext() detects gradedQuiz for assignment-submission URL
+  {
+    totalCount++;
+    console.log('TC-13: getCourseContext() detects gradedQuiz for assignment-submission URL...');
+    const sb = createSandbox('https://www.coursera.org/learn/my-course/assignment-submission/yd6E/my-quiz/attempt');
+    const ctx = vm.runInContext('getCourseContext()', sb);
+    assert.strictEqual(ctx.itemType, 'gradedQuiz', 'itemType must be gradedQuiz');
+    assert.strictEqual(ctx.itemId, 'yd6E', 'itemId must be yd6E');
+    assert.strictEqual(ctx.courseSlug, 'my-course', 'courseSlug must be my-course');
+    console.log('  -> PASS: assignment-submission URL correctly detected as gradedQuiz\n');
+    passedCount++;
+  }
+
+  // TC-14: getCourseContext() peer URL regression — must NOT be affected
+  {
+    totalCount++;
+    console.log('TC-14: getCourseContext() peer URL regression — /peer/ still maps to peer...');
+    const sb = createSandbox('https://www.coursera.org/learn/my-course/peer/abcd1234/give-feedback');
+    const ctx = vm.runInContext('getCourseContext()', sb);
+    assert.strictEqual(ctx.itemType, 'peer', 'peer URL must still be itemType=peer');
+    assert.strictEqual(ctx.courseSlug, 'my-course', 'courseSlug must match');
+    console.log('  -> PASS: peer URL still correctly detected as peer (no regression)\n');
+    passedCount++;
+  }
+
+  // TC-15: buildGeminiPrompt() formats questions correctly
+  {
+    totalCount++;
+    console.log('TC-15: buildGeminiPrompt() creates correct prompt format...');
+    const sb = createSandbox('https://www.coursera.org/learn/my-course/assignment-submission/abc/quiz/attempt');
+
+    const questions = [
+      { index: 0, questionText: 'What is 2 + 2?', type: 'single', options: [{ label: '3' }, { label: '4' }, { label: '5' }] },
+      { index: 1, questionText: 'Select prime numbers:', type: 'multi', options: [{ label: '2' }, { label: '4' }, { label: '7' }, { label: '9' }] },
+    ];
+    sb.questions = questions;
+    const prompt = vm.runInContext('buildGeminiPrompt(questions)', sb);
+
+    assert.ok(prompt.includes('Q1 (single-choice): What is 2 + 2?'), 'Q1 must be single-choice');
+    assert.ok(prompt.includes('Q2 (multi-choice'), 'Q2 must be multi-choice');
+    assert.ok(prompt.includes('0) 3'), 'Q1 option 0 must be listed');
+    assert.ok(prompt.includes('Return ONLY the JSON array'), 'Must include JSON-only instruction');
+    console.log('  -> PASS: buildGeminiPrompt() generates correct structured prompt\n');
+    passedCount++;
+  }
+
+  // TC-16: fillQuizAnswers() clicks the correct option elements
+  {
+    totalCount++;
+    console.log('TC-16: fillQuizAnswers() clicks correct option elements...');
+    const sb = createSandbox('https://www.coursera.org/learn/my-course/assignment-submission/abc/quiz/attempt');
+
+    let clickedCount = 0;
+    const makeInput = (type = 'radio', disabled = false) => {
+      return {
+        type,
+        disabled,
+        click: () => { if (!disabled) clickedCount++; },
+        dispatchEvent: () => {},
+      };
+    };
+
+    const questions = [
+      {
+        index: 0, questionText: 'Q1', type: 'single',
+        options: [
+          { label: 'A', element: makeInput('radio') },
+          { label: 'B', element: makeInput('radio') },
+          { label: 'C', element: makeInput('radio') },
+        ]
+      },
+      {
+        index: 1, questionText: 'Q2', type: 'multi',
+        options: [
+          { label: 'X', element: makeInput('checkbox') },
+          { label: 'Y', element: makeInput('checkbox') },
+          { label: 'Z', element: makeInput('checkbox') },
+        ]
+      },
+    ];
+
+    const answersFromAI = [
+      { q: 1, answers: [2] },      // pick C
+      { q: 2, answers: [0, 2] },   // pick X and Z
+    ];
+
+    sb.questions = questions;
+    sb.answersFromAI = answersFromAI;
+    vm.runInContext('fillQuizAnswers(questions, answersFromAI)', sb);
+
+    assert.strictEqual(clickedCount, 3, 'Should have clicked 3 inputs total (1 + 2)');
+    console.log('  -> PASS: fillQuizAnswers() clicked exactly the right options\n');
+    passedCount++;
+  }
+
+  // TC-17: callGeminiWithRetry() strips markdown fences from JSON response
+  {
+    totalCount++;
+    console.log('TC-17: callGeminiWithRetry() strips markdown code fences...');
+    const sb = createSandbox('https://www.coursera.org/learn/my-course/assignment-submission/abc/quiz/attempt');
+
+    // Mock chrome.runtime.sendMessage to return JSON wrapped in markdown fences
+    sb.chrome.runtime.sendMessage = (msg, callback) => {
+      const rawText = '```json\n[{"q":1,"answers":[0]},{"q":2,"answers":[1,2]}]\n```';
+      const fakeGeminiResponse = {
+        candidates: [{ content: { parts: [{ text: rawText }] } }]
+      };
+      callback({ ok: true, data: fakeGeminiResponse });
+    };
+
+    const result = await vm.runInContext('callGeminiWithRetry("fakekey", "prompt")', sb);
+
+    assert.ok(Array.isArray(result), 'Result should be an array');
+    assert.strictEqual(result.length, 2, 'Should have 2 answer items');
+    assert.strictEqual(result[0].q, 1, 'First item q should be 1');
+    assert.deepEqual(result[0].answers, [0], 'First item answers should be [0]');
+    assert.strictEqual(result[1].q, 2, 'Second item q should be 2');
+    assert.deepEqual(result[1].answers, [1, 2], 'Second item answers should be [1, 2]');
+    console.log('  -> PASS: JSON correctly parsed after stripping markdown code fences\n');
+    passedCount++;
+  }
+
+  // TC-18: autoAnswerGradedQuiz() returns error when API key is missing
+  {
+    totalCount++;
+    console.log('TC-18: autoAnswerGradedQuiz() returns error when API key is missing...');
+    const sb = createSandbox('https://www.coursera.org/learn/my-course/assignment-submission/yd6E/quiz/attempt');
+
+    // Override sendMessage: no API key stored
+    sb.chrome.runtime.sendMessage = (msg, callback) => {
+      if (msg.action === 'getGeminiApiKey') callback({ apiKey: null });
+    };
+
+    const result = await vm.runInContext('autoAnswerGradedQuiz()', sb);
+
+    assert.strictEqual(result.success, false, 'Should return success=false');
+    assert.ok(
+      result.error.includes('API Key') || result.error.includes('api key') || result.error.includes('API key'),
+      'Error must mention API key'
+    );
+    console.log('  -> PASS: autoAnswerGradedQuiz() correctly errors when API key is missing\n');
+    passedCount++;
+  }
+
+  // TC-19: autoAnswerGradedQuiz() returns error when on non-quiz page
+  {
+    totalCount++;
+    console.log('TC-19: autoAnswerGradedQuiz() returns error when not on a gradedQuiz page...');
+    const sb = createSandbox('https://www.coursera.org/learn/my-course/lecture/abcd1234');
+
+    const result = await vm.runInContext('autoAnswerGradedQuiz()', sb);
+
+    assert.strictEqual(result.success, false, 'Should return success=false on non-quiz page');
+    assert.ok(
+      result.error.includes('Graded Quiz') || result.error.includes('quiz'),
+      'Error must mention quiz context'
+    );
+    console.log('  -> PASS: autoAnswerGradedQuiz() correctly errors on non-quiz page\n');
     passedCount++;
   }
 

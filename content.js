@@ -61,16 +61,25 @@ function getCourseContext() {
     return { courseSlug: match[1], itemType, itemId: match[3] };
   }
 
-  // 2. Peer review URLs — Coursera uses several patterns:
+  // 2. Graded Quiz / Assignment Submission — MUST be checked BEFORE peerMatch
+  //    URL pattern: /learn/{slug}/assignment-submission/{itemId}/{quizSlug}/attempt
+  const quizSubmitMatch = href.match(
+    /\/learn\/([^/]+)\/assignment-submission\/([^/?#]+)/i
+  );
+  if (quizSubmitMatch) {
+    return { courseSlug: quizSubmitMatch[1], itemType: 'gradedQuiz', itemId: quizSubmitMatch[2] };
+  }
+
+  // 3. Peer review URLs — Coursera uses several patterns:
   //    /learn/{slug}/peer/{itemId}
   //    /learn/{slug}/peer/{itemId}/give-feedback
   //    /learn/{slug}/peer/{itemId}/review
   //    /learn/{slug}/peer-review/{itemId}
   //    /learn/{slug}/peer-assignment/{itemId}
   //    /learn/{slug}/submit-revisions/{itemId}  (resubmit review)
-  //    /learn/{slug}/assignment-submission/{itemId}
+  //    NOTE: assignment-submission is intentionally excluded — handled above as gradedQuiz
   const peerMatch = href.match(
-    /\/learn\/([^/]+)\/(?:peer-review|peer|peer-assignment|submit-revisions|assignment-submission)\/([^/?#]+)/i
+    /\/learn\/([^/]+)\/(?:peer-review|peer|peer-assignment|submit-revisions)\/([^/?#]+)/i
   );
   if (peerMatch) {
     return { courseSlug: peerMatch[1], itemType: 'peer', itemId: peerMatch[2] };
@@ -89,13 +98,13 @@ function getCourseContext() {
     }
   }
 
-  // 3. Fallback for any discussionPrompt URL variations
+  // 4. Fallback for any discussionPrompt URL variations
   const discMatch = href.match(/\/learn\/([^/]+)\/discussionPrompt\/([^/?#]+)/i);
   if (discMatch) {
     return { courseSlug: discMatch[1], itemType: 'discussionPrompt', itemId: discMatch[2] };
   }
 
-  // 4. Any course page (/learn/{courseSlug}/...) e.g. home, week overview, syllabus
+  // 5. Any course page (/learn/{courseSlug}/...) e.g. home, week overview, syllabus
   const courseMatch = href.match(/\/learn\/([^/?#]+)/i);
   if (courseMatch && courseMatch[1]) {
     const slug = courseMatch[1];
@@ -392,6 +401,11 @@ async function markCurrentItemCompleted() {
   // Nếu bài hiện tại là Peer Review
   if (itemType === 'peer') {
     return await autoGradePeerReview();
+  }
+
+  // Nếu bài hiện tại là Graded Quiz — dùng AI
+  if (itemType === 'gradedQuiz') {
+    return await autoAnswerGradedQuiz();
   }
 
   const courseId = await getCourseId(courseSlug);
@@ -1356,6 +1370,328 @@ async function autoPostDiscussion() {
 }
 
 // =========================================================================
+// ===== AUTO GRADED QUIZ (AI-powered) =====
+// =========================================================================
+
+/**
+ * Extract all quiz questions from the current page DOM.
+ * Returns array of { index, questionText, type: 'single'|'multi', options: [{label, element}] }
+ */
+function extractQuizQuestions() {
+  const questions = [];
+
+  // Selector chains for question containers — Coursera has changed UI several times
+  const questionContainerSelectors = [
+    '[data-testid="question-form"]',
+    '.rc-QuestionView',
+    '[class*="QuestionView"]',
+    '[data-testid*="quiz-question"]',
+    '.css-qi35gx',           // common Coursera quiz wrapper class
+    'form[data-testid]',
+  ];
+
+  let containers = [];
+  for (const sel of questionContainerSelectors) {
+    const found = Array.from(document.querySelectorAll(sel));
+    if (found.length > 0) {
+      containers = found;
+      console.log(`[CourseraSkip] Quiz containers found via: ${sel} (${found.length})`);
+      break;
+    }
+  }
+
+  // Fallback: find all radio/checkbox groups by name attribute
+  if (containers.length === 0) {
+    console.log('[CourseraSkip] No quiz containers found — using input group fallback');
+    const allInputs = Array.from(document.querySelectorAll('input[type="radio"], input[type="checkbox"]'));
+    const groupNames = [...new Set(allInputs.map((i) => i.name).filter(Boolean))];
+    groupNames.forEach((name, idx) => {
+      const groupInputs = allInputs.filter((i) => i.name === name);
+      if (groupInputs.length < 2) return;
+      const type = groupInputs[0].type === 'radio' ? 'single' : 'multi';
+
+      // Find question text from nearest label or heading
+      let questionText = '';
+      const firstInput = groupInputs[0];
+      const closestHeading = firstInput.closest('[class*="question"], [class*="Question"], fieldset, form')?.querySelector('h3, h4, p, [class*="text"], [class*="prompt"]');
+      if (closestHeading) questionText = closestHeading.innerText.trim();
+      if (!questionText) questionText = `Câu ${idx + 1}`;
+
+      const options = groupInputs.map((inp) => {
+        const labelEl = inp.closest('label') || document.querySelector(`label[for="${inp.id}"]`);
+        const label = labelEl ? labelEl.innerText.trim().replace(/^\s*[\u25CF\u25CB\u25A0\u25A1]\s*/, '') : `Option ${inp.value}`;
+        return { label, element: inp };
+      });
+
+      questions.push({ index: idx, questionText, type, options });
+    });
+    return questions;
+  }
+
+  // Parse containers
+  containers.forEach((container, idx) => {
+    // Get question text
+    const textSelectors = [
+      '[data-testid="question-text"]',
+      '[class*="question-text"]',
+      '[class*="questionText"]',
+      '.rc-CML',
+      '[class*="prompt"]',
+      'h3', 'h4', 'p',
+    ];
+    let questionText = '';
+    for (const sel of textSelectors) {
+      const el = container.querySelector(sel);
+      if (el && el.innerText.trim()) {
+        questionText = el.innerText.trim();
+        break;
+      }
+    }
+    if (!questionText) questionText = `Câu ${idx + 1}`;
+
+    const radios = Array.from(container.querySelectorAll('input[type="radio"]'));
+    const checkboxes = Array.from(container.querySelectorAll('input[type="checkbox"]'));
+
+    const inputs = radios.length > 0 ? radios : checkboxes;
+    if (inputs.length === 0) return;
+
+    const type = radios.length > 0 ? 'single' : 'multi';
+
+    const options = inputs.map((inp) => {
+      const labelEl = inp.closest('label') || container.querySelector(`label[for="${inp.id}"]`);
+      let label = '';
+      if (labelEl) {
+        // Remove the input itself from text extraction
+        const clone = labelEl.cloneNode(true);
+        clone.querySelectorAll('input').forEach((e) => e.remove());
+        label = clone.innerText.trim();
+      }
+      if (!label) label = inp.value || `Option ${inputs.indexOf(inp)}`;
+      return { label, element: inp };
+    });
+
+    questions.push({ index: idx, questionText, type, options });
+  });
+
+  console.log(`[CourseraSkip] extractQuizQuestions: found ${questions.length} questions`);
+  return questions;
+}
+
+/**
+ * Build a structured prompt for Gemini.
+ */
+function buildGeminiPrompt(questions) {
+  const lines = [
+    'You are an AI assistant helping answer a graded online quiz. Read each question carefully and select the best answer(s).',
+    'Return ONLY a valid JSON array (no explanation, no markdown fences) in this exact format:',
+    '[{"q":1,"answers":[0]},{"q":2,"answers":[1,3]}]',
+    'Where "q" is the question number (1-based) and "answers" is a list of 0-based option indices.',
+    'For single-choice, provide exactly 1 index. For multi-choice, provide the correct number of indices.',
+    '',
+    '=== QUESTIONS ===',
+  ];
+
+  questions.forEach((q, i) => {
+    const typeLabel = q.type === 'multi' ? '(multi-choice — select all that apply)' : '(single-choice)';
+    lines.push(`Q${i + 1} ${typeLabel}: ${q.questionText}`);
+    q.options.forEach((opt, oi) => {
+      lines.push(`  ${oi}) ${opt.label}`);
+    });
+    lines.push('');
+  });
+
+  lines.push('=== END OF QUESTIONS ===');
+  lines.push('Return ONLY the JSON array. No markdown. No explanation.');
+
+  return lines.join('\n');
+}
+
+/**
+ * Call Gemini via background service worker proxy, with retry on parse failure.
+ */
+async function callGeminiWithRetry(apiKey, prompt, maxRetry = 2) {
+  for (let attempt = 0; attempt <= maxRetry; attempt++) {
+    let response;
+    try {
+      response = await new Promise((resolve, reject) => {
+        chrome.runtime.sendMessage({ action: 'callGeminiApi', apiKey, prompt }, (res) => {
+          if (chrome.runtime.lastError) return reject(new Error(chrome.runtime.lastError.message));
+          resolve(res);
+        });
+      });
+    } catch (e) {
+      if (attempt === maxRetry) throw e;
+      await sleep(1500);
+      continue;
+    }
+
+    if (!response || !response.ok) {
+      const errMsg = response?.error || 'Unknown error from Gemini API';
+      if (attempt === maxRetry) throw new Error(errMsg);
+      await sleep(1500);
+      continue;
+    }
+
+    // Extract text from Gemini response structure
+    const rawText = response.data?.candidates?.[0]?.content?.parts?.[0]?.text || '';
+    console.log('[CourseraSkip] Gemini raw response:', rawText.slice(0, 500));
+
+    // Strip optional markdown code fences
+    const stripped = rawText
+      .replace(/^```(?:json)?\s*/i, '')
+      .replace(/\s*```$/i, '')
+      .trim();
+
+    try {
+      const parsed = JSON.parse(stripped);
+      if (!Array.isArray(parsed)) throw new Error('Response is not an array');
+      return parsed;
+    } catch (parseErr) {
+      console.log(`[CourseraSkip] JSON parse attempt ${attempt + 1} failed:`, parseErr.message, '| raw:', stripped.slice(0, 200));
+      if (attempt === maxRetry) throw new Error(`Gemini trả về định dạng không hợp lệ: ${parseErr.message}`);
+      await sleep(1000);
+    }
+  }
+}
+
+/**
+ * Fill quiz answers into DOM and highlight the Submit button.
+ * answersFromAI: [{q: 1, answers: [0]}, {q: 2, answers: [1,3]}, ...]
+ */
+function fillQuizAnswers(questions, answersFromAI) {
+  let filled = 0;
+
+  answersFromAI.forEach((item) => {
+    const qIdx = item.q - 1; // convert 1-based to 0-based
+    const q = questions[qIdx];
+    if (!q) return;
+
+    const selectedIndices = Array.isArray(item.answers) ? item.answers : [];
+
+    selectedIndices.forEach((optIdx) => {
+      const opt = q.options[optIdx];
+      if (!opt || !opt.element) return;
+
+      const inp = opt.element;
+      if (inp.disabled) return;
+
+      // Use native click to trigger React/Vue/Angular synthetic events
+      inp.click();
+
+      // Also dispatch change event as some frameworks listen to it
+      inp.dispatchEvent(new Event('change', { bubbles: true }));
+      inp.dispatchEvent(new Event('input', { bubbles: true }));
+
+      console.log(`[CourseraSkip] Filled Q${item.q} option[${optIdx}]: ${opt.label}`);
+      filled++;
+    });
+  });
+
+  // Highlight Submit button — find by common selectors
+  const submitSelectors = [
+    'button[data-testid="submit-button"]',
+    'button[type="submit"]',
+    'button[data-testid*="submit"]',
+    'button[class*="submit"]',
+    'button[aria-label*="Submit"]',
+    'button[aria-label*="submit"]',
+  ];
+
+  let submitBtn = null;
+  for (const sel of submitSelectors) {
+    submitBtn = document.querySelector(sel);
+    if (submitBtn) break;
+  }
+
+  if (!submitBtn) {
+    // Text-based fallback
+    const allBtns = Array.from(document.querySelectorAll('button'));
+    submitBtn = allBtns.find(
+      (b) => /submit|nộp bài|hoàn thành/i.test(b.innerText)
+    ) || null;
+  }
+
+  if (submitBtn) {
+    submitBtn.style.outline = '3px solid #10b981';
+    submitBtn.style.boxShadow = '0 0 12px rgba(16,185,129,0.6)';
+    submitBtn.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    console.log('[CourseraSkip] Submit button highlighted');
+  }
+
+  return { filled, submitHighlighted: !!submitBtn };
+}
+
+/**
+ * Main orchestrator for AI quiz answering.
+ */
+async function autoAnswerGradedQuiz() {
+  const context = getCourseContext();
+  if (!context || context.itemType !== 'gradedQuiz') {
+    return { success: false, error: 'Không phải trang Graded Quiz. Hãy mở trang làm bài quiz.' };
+  }
+
+  // 1. Get API key
+  let apiKey = null;
+  try {
+    const keyRes = await new Promise((resolve, reject) => {
+      chrome.runtime.sendMessage({ action: 'getGeminiApiKey' }, (res) => {
+        if (chrome.runtime.lastError) return reject(new Error(chrome.runtime.lastError.message));
+        resolve(res);
+      });
+    });
+    apiKey = keyRes?.apiKey || null;
+  } catch (e) {
+    return { success: false, error: 'Không thể kết nối với extension background. Thử reload trang.' };
+  }
+
+  if (!apiKey || apiKey.trim() === '') {
+    return {
+      success: false,
+      error: 'Chưa nhập Gemini API Key. Bấm ⚙️ trong widget để nhập key miễn phí từ Google AI Studio.'
+    };
+  }
+
+  // 2. Extract questions
+  const questions = extractQuizQuestions();
+  if (questions.length === 0) {
+    return {
+      success: false,
+      error: 'Không tìm thấy câu hỏi nào trong trang. Hãy chắc chắn bạn đang ở trang làm bài quiz (có câu hỏi hiển thị).'
+    };
+  }
+
+  console.log(`[CourseraSkip] Sending ${questions.length} questions to Gemini...`);
+
+  // 3. Build prompt and call Gemini
+  const prompt = buildGeminiPrompt(questions);
+  let answersFromAI;
+  try {
+    answersFromAI = await callGeminiWithRetry(apiKey, prompt);
+  } catch (e) {
+    return { success: false, error: `Lỗi Gemini API: ${e.message}` };
+  }
+
+  if (!answersFromAI || answersFromAI.length === 0) {
+    return { success: false, error: 'Gemini không trả về đáp án. Thử lại.' };
+  }
+
+  // 4. Fill answers into DOM
+  const { filled, submitHighlighted } = fillQuizAnswers(questions, answersFromAI);
+
+  const submitNote = submitHighlighted
+    ? 'Nút Submit đã được highlight — hãy kiểm tra lại và bấm Submit.'
+    : 'Lưu ý: không tìm thấy nút Submit — hãy tự tìm và bấm.';
+
+  return {
+    success: true,
+    submitted: false, // never auto-submit
+    message: `✅ AI đã điền ${filled} lựa chọn cho ${questions.length} câu hỏi. ${submitNote}`,
+    filled,
+    totalQuestions: questions.length,
+  };
+}
+
+// =========================================================================
 // ===== IN-PAGE FLOATING WIDGET (Giao diện cố định trên trang Coursera) =====
 // =========================================================================
 
@@ -1369,9 +1705,17 @@ const WIDGET_I18N = {
     btnBulkVR: 'Hoàn thành toàn bộ Video & Reading',
     btnBulkDisc: 'Hoàn thành toàn bộ Discussion',
     btnPeer: 'Tự động chấm bài bạn học',
+    btnQuiz: 'AI Làm Quiz Tự Động',
     processingCurrent: 'Đang xử lý...',
     processingBulk: 'Đang khởi động...',
-    rateToastMsg: 'Tiết kiệm thời gian? Đánh giá 5★ trên Cửa hàng nhé!'
+    rateToastMsg: 'Tiết kiệm thời gian? Đánh giá 5★ trên Cửa hàng nhé!',
+    settingsTitle: 'Cài đặt AI (Gemini)',
+    apiKeyLabel: 'Gemini API Key',
+    apiKeySave: 'Lưu',
+    apiKeySaved: '✅ Đã lưu API key!',
+    apiKeyPlaceholder: 'AIza...',
+    apiKeyHint: 'Lấy key miễn phí tại Google AI Studio (aistudio.google.com)',
+    settingsClose: 'Đóng',
   },
   en: {
     langBadge: 'EN',
@@ -1382,9 +1726,17 @@ const WIDGET_I18N = {
     btnBulkVR: 'Complete All Video & Reading',
     btnBulkDisc: 'Complete All Discussions',
     btnPeer: 'Auto Grade Peer Review',
+    btnQuiz: 'AI Auto-Answer Quiz',
     processingCurrent: 'Completing...',
     processingBulk: 'Starting...',
-    rateToastMsg: 'Saved your time? Rate 5★ on Chrome Web Store!'
+    rateToastMsg: 'Saved your time? Rate 5★ on Chrome Web Store!',
+    settingsTitle: 'AI Settings (Gemini)',
+    apiKeyLabel: 'Gemini API Key',
+    apiKeySave: 'Save',
+    apiKeySaved: '✅ API key saved!',
+    apiKeyPlaceholder: 'AIza...',
+    apiKeyHint: 'Get a free key at Google AI Studio (aistudio.google.com)',
+    settingsClose: 'Close',
   }
 };
 
@@ -1478,6 +1830,7 @@ function updateWidgetContext() {
   const typeIconEl = widgetShadow.getElementById('cs-type-icon');
   const currentBtn = widgetShadow.getElementById('cs-btn-current');
   const peerBtn = widgetShadow.getElementById('cs-btn-peer');
+  const quizBtn = widgetShadow.getElementById('cs-btn-quiz');
 
   if (!ctx || !ctx.courseSlug) {
     if (statusCard) statusCard.style.display = 'none';
@@ -1498,6 +1851,7 @@ function updateWidgetContext() {
     lecture: { icon: '🎬', en: 'Video Lecture', vi: 'Bài giảng Video' },
     supplement: { icon: '📖', en: 'Reading Material', vi: 'Tài liệu Đọc' },
     quiz: { icon: '📝', en: 'Quiz Assessment', vi: 'Bài kiểm tra (Quiz)' },
+    gradedQuiz: { icon: '🤖', en: 'Graded Quiz (AI)', vi: 'Graded Quiz (AI)' },
     programming: { icon: '💻', en: 'Programming Lab', vi: 'Bài tập Thực hành' },
     peer: { icon: '👥', en: 'Peer Review', vi: 'Bài tập Chấm chéo' },
     discussionPrompt: { icon: '💬', en: 'Discussion Prompt', vi: 'Câu hỏi thảo luận' },
@@ -1510,12 +1864,18 @@ function updateWidgetContext() {
   if (typeIconEl) typeIconEl.textContent = cfg.icon;
   if (typeTextEl) typeTextEl.textContent = currentWidgetLang === 'vi' ? cfg.vi : cfg.en;
 
-  // Toggle peer button vs current button
+  // Toggle buttons based on item type
   if (currentType === 'peer') {
     if (peerBtn) peerBtn.style.display = 'flex';
     if (currentBtn) currentBtn.style.display = 'none';
+    if (quizBtn) quizBtn.style.display = 'none';
+  } else if (currentType === 'gradedQuiz') {
+    if (quizBtn) quizBtn.style.display = 'flex';
+    if (currentBtn) currentBtn.style.display = 'none';
+    if (peerBtn) peerBtn.style.display = 'none';
   } else {
     if (peerBtn) peerBtn.style.display = 'none';
+    if (quizBtn) quizBtn.style.display = 'none';
     if (currentBtn) currentBtn.style.display = 'flex';
   }
 }
@@ -1529,6 +1889,11 @@ function updateWidgetLanguageUI() {
   const txtBulkVR = widgetShadow.getElementById('cs-txt-bulk-vr');
   const txtBulkDisc = widgetShadow.getElementById('cs-txt-bulk-disc');
   const txtPeer = widgetShadow.getElementById('cs-txt-peer');
+  const txtQuiz = widgetShadow.getElementById('cs-txt-quiz');
+  const settingsTitle = widgetShadow.getElementById('cs-settings-title');
+  const apiKeyLabel = widgetShadow.getElementById('cs-api-key-label');
+  const apiKeyHint = widgetShadow.getElementById('cs-api-key-hint');
+  const saveKeyBtnEl = widgetShadow.getElementById('cs-save-key-btn');
 
   if (langBtn) langBtn.textContent = wt('langBadge');
   if (statusLabel) statusLabel.textContent = wt('detected');
@@ -1537,6 +1902,11 @@ function updateWidgetLanguageUI() {
   if (txtBulkVR) txtBulkVR.textContent = wt('btnBulkVR');
   if (txtBulkDisc) txtBulkDisc.textContent = wt('btnBulkDisc');
   if (txtPeer) txtPeer.textContent = wt('btnPeer');
+  if (txtQuiz) txtQuiz.textContent = wt('btnQuiz');
+  if (settingsTitle) settingsTitle.textContent = `⚙️ ${wt('settingsTitle')}`;
+  if (apiKeyLabel) apiKeyLabel.textContent = wt('apiKeyLabel');
+  if (apiKeyHint) apiKeyHint.textContent = wt('apiKeyHint');
+  if (saveKeyBtnEl) saveKeyBtnEl.textContent = wt('apiKeySave');
 
   updateWidgetContext();
 }
@@ -1891,6 +2261,90 @@ function initFloatingWidget() {
     @keyframes csSpin { to { transform: rotate(360deg); } }
     @keyframes csPulse { 0%, 100% { opacity: 1; transform: scale(1); } 50% { opacity: 0.5; transform: scale(0.9); } }
     @keyframes csFadeIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
+
+    /* Quiz AI Button */
+    .cs-btn-quiz {
+      background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
+      box-shadow: 0 2px 8px rgba(245, 158, 11, 0.3);
+    }
+    .cs-btn-quiz:hover:not(:disabled) {
+      transform: translateY(-1px);
+      box-shadow: 0 4px 12px rgba(245, 158, 11, 0.5);
+    }
+
+    /* Settings Panel */
+    .cs-settings {
+      background: rgba(15, 23, 42, 0.9);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      border-radius: 10px;
+      padding: 10px 12px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      animation: csFadeIn 0.2s ease;
+    }
+    .cs-settings-title {
+      font-size: 11px;
+      font-weight: 700;
+      color: #a5b4fc;
+      letter-spacing: 0.03em;
+    }
+    .cs-input-group {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+    .cs-input-label {
+      font-size: 10px;
+      font-weight: 600;
+      color: #94a3b8;
+    }
+    .cs-input-row {
+      display: flex;
+      gap: 6px;
+      align-items: center;
+    }
+    .cs-api-key-input {
+      flex: 1;
+      background: rgba(30, 41, 59, 0.8);
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      border-radius: 6px;
+      padding: 5px 8px;
+      font-size: 11px;
+      color: #f1f5f9;
+      font-family: monospace;
+      outline: none;
+      transition: border-color 0.2s;
+      min-width: 0;
+    }
+    .cs-api-key-input:focus {
+      border-color: #6366f1;
+    }
+    .cs-api-key-input::placeholder {
+      color: #475569;
+    }
+    .cs-save-key-btn {
+      background: linear-gradient(135deg, #6366f1, #8b5cf6);
+      border: none;
+      border-radius: 6px;
+      padding: 5px 10px;
+      font-size: 11px;
+      font-weight: 700;
+      color: #fff;
+      cursor: pointer;
+      white-space: nowrap;
+      transition: all 0.2s;
+      flex-shrink: 0;
+    }
+    .cs-save-key-btn:hover {
+      opacity: 0.85;
+    }
+    .cs-settings-hint {
+      font-size: 10px;
+      color: #475569;
+      line-height: 1.4;
+      margin: 0;
+    }
   `;
 
   const container = document.createElement('div');
@@ -1912,6 +2366,7 @@ function initFloatingWidget() {
         </div>
         <div class="cs-header-actions">
           <button class="cs-pill-btn" id="cs-lang-btn" title="Switch Language">VI</button>
+          <button class="cs-icon-btn" id="cs-settings-btn" title="AI Settings">⚙️</button>
           <button class="cs-icon-btn" id="cs-min-btn" title="Thu nhỏ">─</button>
         </div>
       </div>
@@ -1944,6 +2399,12 @@ function initFloatingWidget() {
             <span class="cs-btn-text" id="cs-txt-current">Hoàn thành bài hiện tại</span>
           </button>
 
+          <button class="cs-btn cs-btn-quiz" id="cs-btn-quiz" style="display: none;">
+            <span class="cs-btn-icon">🤖</span>
+            <div class="cs-spinner"></div>
+            <span class="cs-btn-text" id="cs-txt-quiz">AI Làm Quiz Tự Động</span>
+          </button>
+
           <button class="cs-btn cs-btn-magic" id="cs-btn-bulk-vr">
             <span class="cs-btn-icon">🚀</span>
             <div class="cs-spinner"></div>
@@ -1961,6 +2422,19 @@ function initFloatingWidget() {
             <div class="cs-spinner"></div>
             <span class="cs-btn-text" id="cs-txt-peer">Tự động chấm bài bạn học</span>
           </button>
+        </div>
+
+        <!-- Settings Panel (hidden by default) -->
+        <div class="cs-settings" id="cs-settings" style="display: none;">
+          <div class="cs-settings-title" id="cs-settings-title">⚙️ Cài đặt AI (Gemini)</div>
+          <div class="cs-input-group">
+            <label class="cs-input-label" id="cs-api-key-label">Gemini API Key</label>
+            <div class="cs-input-row">
+              <input type="password" class="cs-api-key-input" id="cs-api-key-input" placeholder="AIza..." autocomplete="off" />
+              <button class="cs-save-key-btn" id="cs-save-key-btn" id="cs-txt-save">Lưu</button>
+            </div>
+          </div>
+          <p class="cs-settings-hint" id="cs-api-key-hint">Lấy key miễn phí tại Google AI Studio (aistudio.google.com)</p>
         </div>
 
         <!-- Progress UI -->
@@ -1986,12 +2460,18 @@ function initFloatingWidget() {
   const panelEl = widgetShadow.getElementById('cs-panel');
   const minBtn = widgetShadow.getElementById('cs-min-btn');
   const langBtn = widgetShadow.getElementById('cs-lang-btn');
+  const settingsBtn = widgetShadow.getElementById('cs-settings-btn');
   const headerEl = widgetShadow.getElementById('cs-header');
 
   const btnCurrent = widgetShadow.getElementById('cs-btn-current');
+  const btnQuiz = widgetShadow.getElementById('cs-btn-quiz');
   const btnBulkVR = widgetShadow.getElementById('cs-btn-bulk-vr');
   const btnBulkDisc = widgetShadow.getElementById('cs-btn-bulk-disc');
   const btnPeer = widgetShadow.getElementById('cs-btn-peer');
+
+  const settingsPanel = widgetShadow.getElementById('cs-settings');
+  const apiKeyInput = widgetShadow.getElementById('cs-api-key-input');
+  const saveKeyBtn = widgetShadow.getElementById('cs-save-key-btn');
 
   // Load saved minimize state
   const isMinimized = localStorage.getItem('coursera_skip_widget_minimized') === 'true';
@@ -2014,6 +2494,15 @@ function initFloatingWidget() {
     }
   } catch (_) {}
 
+  // Load saved API key into input (show placeholder mask)
+  try {
+    chrome.runtime.sendMessage({ action: 'getGeminiApiKey' }, (res) => {
+      if (res && res.apiKey && apiKeyInput) {
+        apiKeyInput.placeholder = '••••••••••••••• (đã lưu)';
+      }
+    });
+  } catch (_) {}
+
   // Minimize / Expand logic
   minBtn.addEventListener('click', () => {
     panelEl.style.display = 'none';
@@ -2034,6 +2523,37 @@ function initFloatingWidget() {
     localStorage.setItem('coursera_skip_lang', currentWidgetLang);
     updateWidgetLanguageUI();
   });
+
+  // Settings panel toggle
+  if (settingsBtn && settingsPanel) {
+    settingsBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const isVisible = settingsPanel.style.display !== 'none';
+      settingsPanel.style.display = isVisible ? 'none' : 'flex';
+    });
+  }
+
+  // Save API key
+  if (saveKeyBtn && apiKeyInput) {
+    saveKeyBtn.addEventListener('click', () => {
+      const key = apiKeyInput.value.trim();
+      if (!key) {
+        showWidgetAlert('error', 'Vui lòng nhập API key.');
+        return;
+      }
+      chrome.runtime.sendMessage({ action: 'setGeminiApiKey', key }, (res) => {
+        if (res && res.ok) {
+          apiKeyInput.value = '';
+          apiKeyInput.placeholder = '••••••••••••••• (đã lưu)';
+          showWidgetAlert('success', wt('apiKeySaved'));
+          // Close settings panel after save
+          if (settingsPanel) settingsPanel.style.display = 'none';
+        } else {
+          showWidgetAlert('error', 'Không thể lưu API key. Thử lại.');
+        }
+      });
+    });
+  }
 
   // Draggable logic on header
   let isDragging = false;
@@ -2094,6 +2614,30 @@ function initFloatingWidget() {
       btnCurrent.disabled = false;
     }
   });
+
+  // Action: AI Quiz tự động
+  if (btnQuiz) {
+    btnQuiz.addEventListener('click', async () => {
+      if (isWidgetProcessing) return;
+      btnQuiz.classList.add('loading');
+      btnQuiz.disabled = true;
+
+      try {
+        const res = await autoAnswerGradedQuiz();
+        if (res && res.success) {
+          showWidgetAlert('success', res.message);
+          // No reload — user must verify and submit manually
+        } else {
+          showWidgetAlert('error', res?.error || 'Có lỗi khi chạy AI Quiz.');
+        }
+      } catch (err) {
+        showWidgetAlert('error', err.message || 'Lỗi không xác định.');
+      } finally {
+        btnQuiz.classList.remove('loading');
+        btnQuiz.disabled = false;
+      }
+    });
+  }
 
   // Action: Hoàn thành toàn bộ Video & Reading
   btnBulkVR.addEventListener('click', async () => {
