@@ -2431,10 +2431,11 @@ function initFloatingWidget() {
             <label class="cs-input-label" id="cs-api-key-label">Gemini API Key</label>
             <div class="cs-input-row">
               <input type="password" class="cs-api-key-input" id="cs-api-key-input" placeholder="AIza..." autocomplete="off" />
-              <button class="cs-save-key-btn" id="cs-save-key-btn" id="cs-txt-save">Lưu</button>
+              <button class="cs-save-key-btn" id="cs-save-key-btn">Lưu</button>
             </div>
           </div>
           <p class="cs-settings-hint" id="cs-api-key-hint">Lấy key miễn phí tại Google AI Studio (aistudio.google.com)</p>
+          <p style="margin-top: 6px; font-size: 10px; color: #64748b; line-height: 1.3; text-align: center;">Key lưu cục bộ trên máy. Độc lập, không liên kết với Coursera Inc.</p>
         </div>
 
         <!-- Progress UI -->

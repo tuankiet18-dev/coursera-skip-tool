@@ -4,7 +4,7 @@
 </div>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-1.4.0-blue.svg" alt="Version">
+  <img src="https://img.shields.io/badge/version-1.5.0-blue.svg" alt="Version">
   <a href="https://chromewebstore.google.com/detail/coursera-skip-video-read/jjbgneddmjkolgmpamecbhfgjgdiajlf">
     <img src="https://img.shields.io/badge/Chrome_Web_Store-Install_1--Click-success?logo=googlechrome&logoColor=white" alt="Chrome Web Store">
   </a>
@@ -12,7 +12,9 @@
     <img src="https://img.shields.io/badge/Reviews-Rate_5★-gold" alt="Rate 5 Stars">
   </a>
   <img src="https://img.shields.io/badge/status-active-success.svg" alt="Status">
-  <img src="https://img.shields.io/badge/license-MIT-green.svg" alt="License">
+  <a href="./LICENSE">
+    <img src="https://img.shields.io/badge/license-MIT-green.svg" alt="License">
+  </a>
 </p>
 
 <p align="center">
@@ -30,15 +32,16 @@ Unlike other versions circulating online that may contain harmful code (cookie s
 
 ## ✨ Features
 
-- **📌 In-Page Floating Widget (New in v1.4.0):** An always-available floating widget injected directly into Coursera course pages via Shadow DOM. Never gets closed or interrupted when clicking outside. Features a draggable header, collapsible FAB badge (`⚡`), and remembers its position and state in `localStorage`.
+- **📌 In-Page Floating Widget (v1.4.0+):** An always-available floating widget injected directly into Coursera course pages via Shadow DOM. Never gets closed or interrupted when clicking outside. Features a draggable header, collapsible FAB badge (`⚡`), and remembers its position and state in `localStorage`.
 - **⚡ Complete Current Lesson:** Instantly mark the currently opened Coursera video lecture or reading material as completed.
 - **🚀 Complete All Video & Reading (Bulk):** Automatically detect, batch-process, and complete all video lectures and reading items across the entire course.
-- **💬 Complete All Discussions (New in v1.4.0):** Batch-completes all mandatory discussion prompts across the course with rate-limit protection and automated response posting.
-- **👥 Auto Peer Review:** 1-Click grading for peer-reviewed assignments. Automatically selects maximum rubric scores, inputs natural positive feedback comments, and highlights submit button.
+- **💬 Complete All Discussions:** Batch-completes all mandatory discussion prompts across the course with rate-limit protection and automated response posting.
+- **👥 Auto Peer Review:** 1-Click grading for peer-reviewed assignments. Selects rubric scores, inputs constructive positive feedback, and assists in completing reviews.
+- **🤖 AI Study Assistant (Optional - v1.5.0):** Powered by Google Gemini 2.0 Flash (BYOK - Bring Your Own Key). Your personal API key is stored strictly on your local browser and never sent to any intermediate server.
 - **⭐ Smart Review & Rating:** Easily support the project with a 5-star rating directly from within the extension.
 - **🌐 Internationalization (i18n):** Full support for **English** and **Vietnamese (Tiếng Việt)** with a 1-click switcher `[🌐 EN | VI]` in both the floating widget and popup.
 - **✨ Clean & Friendly UI/UX:** Streamlined dark theme with zero clutter, clean course name formatting, and an intuitive 3-step guide screen.
-- **🔒 100% Secure & Open-Source:** Fully transparent code. Safe for your personal Coursera account.
+- **🔒 100% Secure & Open-Source:** Fully transparent code. No credential harvesting.
 
 ## 🛠 Installation Guide
 
@@ -87,12 +90,13 @@ The extension is designed to only activate when you are viewing an actual lesson
 Please make sure you are actively logged in and <strong>enrolled</strong> in the course on Coursera before running the tool.
 </details>
 
-## 💡 SEO & Helping the Community
+## 💖 Support & Donate
 
-If you find this tool helpful, please support us by:
-- ⭐ **Starring** this repository on GitHub!
-- 🔗 **Sharing** the link on Reddit (`r/coursera`, `r/learnprogramming`), Discord, or student communities.
-- 🏷️ Adding relevant tags in GitHub settings (`coursera`, `coursera-skip-tool`, `automation`, `browser-extension`, `speed-learning`).
+This project is 100% free and open-source. If it saved your valuable time, consider supporting the developer:
+
+- ⭐ **Star this repository** on GitHub!
+- ☕ **Buy me a coffee**: [buymeacoffee.com/tuankiet](https://www.buymeacoffee.com) *(or via GitHub Sponsors)*
+- 📢 **Share with fellow students** on Reddit (`r/coursera`, `r/learnprogramming`), Discord, or student groups.
 
 ## 🤝 Contributing
 
@@ -101,6 +105,10 @@ Contributions of all kinds are welcome! Whether you are fixing a bug, adding a n
 1. Check out our **[Contributing Guidelines (CONTRIBUTING.md)](./CONTRIBUTING.md)** for local development setup, code structure, and guidelines.
 2. Feel free to open an [Issue](https://github.com/tuankiet18-dev/coursera-skip-tool/issues) or submit a [Pull Request](https://github.com/tuankiet18-dev/coursera-skip-tool/pulls).
 
-## ⚖️ Disclaimer
+## ⚖️ Legal Disclaimer & Terms of Use
 
-This tool is created for educational and research purposes to demonstrate browser automation capabilities. Use it responsibly and in accordance with Coursera's terms of service.
+> [!IMPORTANT]
+> 1. **Non-Affiliation:** This extension is an independent, community-driven open-source project and is **NOT affiliated with, associated with, authorized by, sponsored by, or endorsed by Coursera Inc.** Coursera and related marks are registered trademarks of Coursera Inc.
+> 2. **Purpose of Software:** This software is provided strictly for educational research, study progress management, and personal productivity purposes.
+> 3. **Honor Code & Compliance:** Users are solely responsible for ensuring their usage complies with [Coursera's Terms of Use](https://www.coursera.org/about/terms) and [Honor Code](https://www.coursera.org/about/terms/honorcode). The developers and contributors do not encourage academic dishonesty.
+> 4. **No Warranty ("AS IS"):** As specified in the [MIT License](./LICENSE), this software is provided "AS IS", without warranty of any kind. The authors and contributors shall not be held liable for any claims, damages, account penalties, or course status changes resulting from the use of this tool. Use responsibly and at your own discretion.
