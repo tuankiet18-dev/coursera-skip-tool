@@ -23,7 +23,20 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   }
 
   if (message.action === 'setGeminiApiKey') {
-    chrome.storage.local.set({ geminiApiKey: message.key }, () => {
+    if (!message.key) {
+      chrome.storage.local.remove(['geminiApiKey'], () => {
+        sendResponse({ ok: true });
+      });
+    } else {
+      chrome.storage.local.set({ geminiApiKey: message.key }, () => {
+        sendResponse({ ok: true });
+      });
+    }
+    return true;
+  }
+
+  if (message.action === 'removeGeminiApiKey') {
+    chrome.storage.local.remove(['geminiApiKey'], () => {
       sendResponse({ ok: true });
     });
     return true;

@@ -1712,10 +1712,18 @@ const WIDGET_I18N = {
     settingsTitle: 'Cài đặt AI (Gemini)',
     apiKeyLabel: 'Gemini API Key',
     apiKeySave: 'Lưu',
-    apiKeySaved: '✅ Đã lưu API key!',
+    apiKeySaved: '✅ Đã lưu API key thành công!',
     apiKeyPlaceholder: 'AIza...',
     apiKeyHint: 'Lấy key miễn phí tại Google AI Studio (aistudio.google.com)',
     settingsClose: 'Đóng',
+    apiKeyActive: 'Đã lưu key',
+    apiKeyNone: 'Chưa có key',
+    apiKeyEnterNew: 'Dán key mới để thay đổi...',
+    apiKeyDefaultPlaceholder: 'Dán Gemini API Key (AIzaSy...)',
+    apiKeyDelete: 'Xóa key',
+    apiKeyDeleted: '🗑️ Đã xóa API key!',
+    apiKeyEmptyErr: 'Vui lòng nhập API key.',
+    apiKeyPromptPaste: 'Vui lòng dán key mới vào ô nhập để thay đổi.',
   },
   en: {
     langBadge: 'EN',
@@ -1733,10 +1741,18 @@ const WIDGET_I18N = {
     settingsTitle: 'AI Settings (Gemini)',
     apiKeyLabel: 'Gemini API Key',
     apiKeySave: 'Save',
-    apiKeySaved: '✅ API key saved!',
+    apiKeySaved: '✅ API key saved successfully!',
     apiKeyPlaceholder: 'AIza...',
     apiKeyHint: 'Get a free key at Google AI Studio (aistudio.google.com)',
     settingsClose: 'Close',
+    apiKeyActive: 'Key saved',
+    apiKeyNone: 'No key saved',
+    apiKeyEnterNew: 'Paste new key to replace...',
+    apiKeyDefaultPlaceholder: 'Paste Gemini API Key (AIzaSy...)',
+    apiKeyDelete: 'Delete key',
+    apiKeyDeleted: '🗑️ API key deleted!',
+    apiKeyEmptyErr: 'Please enter an API key.',
+    apiKeyPromptPaste: 'Please paste a new key into the box to replace.',
   }
 };
 
@@ -1895,6 +1911,9 @@ function updateWidgetLanguageUI() {
   const apiKeyHint = widgetShadow.getElementById('cs-api-key-hint');
   const saveKeyBtnEl = widgetShadow.getElementById('cs-save-key-btn');
 
+  const deleteKeyTxt = widgetShadow.getElementById('cs-delete-key-txt');
+  if (deleteKeyTxt) deleteKeyTxt.textContent = wt('apiKeyDelete');
+
   if (langBtn) langBtn.textContent = wt('langBadge');
   if (statusLabel) statusLabel.textContent = wt('detected');
   if (metaLabel) metaLabel.textContent = wt('typeLabel');
@@ -1908,7 +1927,52 @@ function updateWidgetLanguageUI() {
   if (apiKeyHint) apiKeyHint.textContent = wt('apiKeyHint');
   if (saveKeyBtnEl) saveKeyBtnEl.textContent = wt('apiKeySave');
 
+  refreshWidgetApiKeyUI();
   updateWidgetContext();
+}
+
+function refreshWidgetApiKeyUI() {
+  const targetShadow = (typeof window !== 'undefined' && window.widgetShadow) || widgetShadow;
+  if (!targetShadow) return;
+  const apiKeyInput = targetShadow.getElementById('cs-api-key-input');
+  const deleteKeyBtn = targetShadow.getElementById('cs-delete-key-btn');
+  const keyStatusBadge = targetShadow.getElementById('cs-key-status-badge');
+  const keyMaskPreview = targetShadow.getElementById('cs-key-mask-preview');
+
+  chrome.runtime.sendMessage({ action: 'getGeminiApiKey' }, (res) => {
+    const key = res?.apiKey || null;
+    if (key && key.trim()) {
+      const masked = key.length > 8 ? `${key.slice(0, 4)}...${key.slice(-4)}` : '••••••••';
+      if (keyStatusBadge) {
+        keyStatusBadge.textContent = `● ${wt('apiKeyActive')}`;
+        keyStatusBadge.className = 'cs-key-status-badge active';
+      }
+      if (keyMaskPreview) {
+        keyMaskPreview.textContent = `(${masked})`;
+        keyMaskPreview.title = `Active key: ${masked}`;
+      }
+      if (apiKeyInput) {
+        apiKeyInput.placeholder = wt('apiKeyEnterNew');
+      }
+      if (deleteKeyBtn) {
+        deleteKeyBtn.style.display = 'inline-flex';
+      }
+    } else {
+      if (keyStatusBadge) {
+        keyStatusBadge.textContent = `○ ${wt('apiKeyNone')}`;
+        keyStatusBadge.className = 'cs-key-status-badge empty';
+      }
+      if (keyMaskPreview) {
+        keyMaskPreview.textContent = '';
+      }
+      if (apiKeyInput) {
+        apiKeyInput.placeholder = wt('apiKeyDefaultPlaceholder');
+      }
+      if (deleteKeyBtn) {
+        deleteKeyBtn.style.display = 'none';
+      }
+    }
+  });
 }
 
 function initFloatingWidget() {
@@ -2274,14 +2338,20 @@ function initFloatingWidget() {
 
     /* Settings Panel */
     .cs-settings {
-      background: rgba(15, 23, 42, 0.9);
-      border: 1px solid rgba(255, 255, 255, 0.1);
-      border-radius: 10px;
-      padding: 10px 12px;
+      background: rgba(15, 23, 42, 0.95);
+      border: 1px solid rgba(99, 102, 241, 0.25);
+      border-radius: 12px;
+      padding: 12px;
       display: flex;
       flex-direction: column;
-      gap: 8px;
+      gap: 9px;
       animation: csFadeIn 0.2s ease;
+      box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+    }
+    .cs-settings-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
     }
     .cs-settings-title {
       font-size: 11px;
@@ -2289,45 +2359,108 @@ function initFloatingWidget() {
       color: #a5b4fc;
       letter-spacing: 0.03em;
     }
+    .cs-key-status-badge {
+      font-size: 10px;
+      padding: 2px 7px;
+      border-radius: 10px;
+      font-weight: 600;
+      display: inline-flex;
+      align-items: center;
+      gap: 3px;
+    }
+    .cs-key-status-badge.active {
+      background: rgba(16, 185, 129, 0.15);
+      color: #34d399;
+      border: 1px solid rgba(16, 185, 129, 0.3);
+    }
+    .cs-key-status-badge.empty {
+      background: rgba(239, 68, 68, 0.12);
+      color: #f87171;
+      border: 1px solid rgba(239, 68, 68, 0.25);
+    }
     .cs-input-group {
       display: flex;
       flex-direction: column;
-      gap: 4px;
+      gap: 5px;
+    }
+    .cs-input-label-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
     }
     .cs-input-label {
       font-size: 10px;
       font-weight: 600;
       color: #94a3b8;
     }
+    .cs-key-mask-preview {
+      font-size: 10px;
+      color: #38bdf8;
+      font-family: monospace;
+      font-weight: 600;
+    }
     .cs-input-row {
       display: flex;
       gap: 6px;
       align-items: center;
     }
-    .cs-api-key-input {
+    .cs-input-wrapper {
+      position: relative;
       flex: 1;
-      background: rgba(30, 41, 59, 0.8);
-      border: 1px solid rgba(255, 255, 255, 0.12);
+      display: flex;
+      align-items: center;
+      min-width: 0;
+    }
+    .cs-api-key-input {
+      width: 100%;
+      background: rgba(30, 41, 59, 0.85);
+      border: 1px solid rgba(255, 255, 255, 0.14);
       border-radius: 6px;
-      padding: 5px 8px;
+      padding: 6px 44px 6px 8px;
       font-size: 11px;
       color: #f1f5f9;
       font-family: monospace;
       outline: none;
-      transition: border-color 0.2s;
+      transition: all 0.2s;
       min-width: 0;
+      user-select: text !important;
+      -webkit-user-select: text !important;
     }
     .cs-api-key-input:focus {
       border-color: #6366f1;
+      box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.25);
     }
     .cs-api-key-input::placeholder {
-      color: #475569;
+      color: #64748b;
+      font-family: system-ui, -apple-system, sans-serif;
+    }
+    .cs-toggle-eye-btn, .cs-clear-input-btn {
+      position: absolute;
+      background: transparent;
+      border: none;
+      color: #94a3b8;
+      cursor: pointer;
+      padding: 2px 4px;
+      font-size: 11px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: color 0.2s;
+    }
+    .cs-toggle-eye-btn {
+      right: 5px;
+    }
+    .cs-clear-input-btn {
+      right: 23px;
+    }
+    .cs-toggle-eye-btn:hover, .cs-clear-input-btn:hover {
+      color: #fff;
     }
     .cs-save-key-btn {
       background: linear-gradient(135deg, #6366f1, #8b5cf6);
       border: none;
       border-radius: 6px;
-      padding: 5px 10px;
+      padding: 6px 12px;
       font-size: 11px;
       font-weight: 700;
       color: #fff;
@@ -2335,9 +2468,36 @@ function initFloatingWidget() {
       white-space: nowrap;
       transition: all 0.2s;
       flex-shrink: 0;
+      box-shadow: 0 2px 6px rgba(99, 102, 241, 0.3);
     }
     .cs-save-key-btn:hover {
-      opacity: 0.85;
+      transform: translateY(-1px);
+      box-shadow: 0 4px 10px rgba(99, 102, 241, 0.45);
+    }
+    .cs-settings-actions-row {
+      display: flex;
+      align-items: center;
+      justify-content: flex-end;
+      gap: 6px;
+    }
+    .cs-btn-danger-outline {
+      background: rgba(239, 68, 68, 0.1);
+      border: 1px solid rgba(239, 68, 68, 0.3);
+      color: #f87171;
+      border-radius: 6px;
+      padding: 3px 8px;
+      font-size: 10px;
+      font-weight: 600;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      transition: all 0.2s;
+    }
+    .cs-btn-danger-outline:hover {
+      background: rgba(239, 68, 68, 0.2);
+      border-color: rgba(239, 68, 68, 0.5);
+      color: #fff;
     }
     .cs-settings-hint {
       font-size: 10px;
@@ -2426,16 +2586,31 @@ function initFloatingWidget() {
 
         <!-- Settings Panel (hidden by default) -->
         <div class="cs-settings" id="cs-settings" style="display: none;">
-          <div class="cs-settings-title" id="cs-settings-title">⚙️ Cài đặt AI (Gemini)</div>
+          <div class="cs-settings-header">
+            <span class="cs-settings-title" id="cs-settings-title">⚙️ Cài đặt AI (Gemini)</span>
+            <span class="cs-key-status-badge empty" id="cs-key-status-badge">○ Chưa có key</span>
+          </div>
           <div class="cs-input-group">
-            <label class="cs-input-label" id="cs-api-key-label">Gemini API Key</label>
+            <div class="cs-input-label-row">
+              <label class="cs-input-label" id="cs-api-key-label">Gemini API Key</label>
+              <span class="cs-key-mask-preview" id="cs-key-mask-preview"></span>
+            </div>
             <div class="cs-input-row">
-              <input type="password" class="cs-api-key-input" id="cs-api-key-input" placeholder="AIza..." autocomplete="off" />
-              <button class="cs-save-key-btn" id="cs-save-key-btn">Lưu</button>
+              <div class="cs-input-wrapper">
+                <input type="password" class="cs-api-key-input" id="cs-api-key-input" placeholder="AIza..." autocomplete="off" spellcheck="false" />
+                <button type="button" class="cs-clear-input-btn" id="cs-clear-input-btn" title="Xóa ô nhập" style="display: none;">✕</button>
+                <button type="button" class="cs-toggle-eye-btn" id="cs-toggle-eye-btn" title="Hiện/Ẩn key">👁️</button>
+              </div>
+              <button type="button" class="cs-save-key-btn" id="cs-save-key-btn">Lưu</button>
             </div>
           </div>
+          <div class="cs-settings-actions-row">
+            <button type="button" class="cs-btn-danger-outline" id="cs-delete-key-btn" style="display: none;">
+              🗑️ <span id="cs-delete-key-txt">Xóa key</span>
+            </button>
+          </div>
           <p class="cs-settings-hint" id="cs-api-key-hint">Lấy key miễn phí tại Google AI Studio (aistudio.google.com)</p>
-          <p style="margin-top: 6px; font-size: 10px; color: #64748b; line-height: 1.3; text-align: center;">Key lưu cục bộ trên máy. Độc lập, không liên kết với Coursera Inc.</p>
+          <p style="margin-top: 4px; font-size: 10px; color: #64748b; line-height: 1.3; text-align: center;">Key lưu cục bộ trên máy. Độc lập, không liên kết với Coursera Inc.</p>
         </div>
 
         <!-- Progress UI -->
@@ -2473,6 +2648,9 @@ function initFloatingWidget() {
   const settingsPanel = widgetShadow.getElementById('cs-settings');
   const apiKeyInput = widgetShadow.getElementById('cs-api-key-input');
   const saveKeyBtn = widgetShadow.getElementById('cs-save-key-btn');
+  const deleteKeyBtn = widgetShadow.getElementById('cs-delete-key-btn');
+  const toggleEyeBtn = widgetShadow.getElementById('cs-toggle-eye-btn');
+  const clearInputBtn = widgetShadow.getElementById('cs-clear-input-btn');
 
   // Load saved minimize state
   const isMinimized = localStorage.getItem('coursera_skip_widget_minimized') === 'true';
@@ -2495,14 +2673,8 @@ function initFloatingWidget() {
     }
   } catch (_) {}
 
-  // Load saved API key into input (show placeholder mask)
-  try {
-    chrome.runtime.sendMessage({ action: 'getGeminiApiKey' }, (res) => {
-      if (res && res.apiKey && apiKeyInput) {
-        apiKeyInput.placeholder = '••••••••••••••• (đã lưu)';
-      }
-    });
-  } catch (_) {}
+  // Initial load API key state
+  refreshWidgetApiKeyUI();
 
   // Minimize / Expand logic
   minBtn.addEventListener('click', () => {
@@ -2530,29 +2702,105 @@ function initFloatingWidget() {
     settingsBtn.addEventListener('click', (e) => {
       e.stopPropagation();
       const isVisible = settingsPanel.style.display !== 'none';
-      settingsPanel.style.display = isVisible ? 'none' : 'flex';
+      if (isVisible) {
+        settingsPanel.style.display = 'none';
+      } else {
+        settingsPanel.style.display = 'flex';
+        refreshWidgetApiKeyUI();
+        if (apiKeyInput) {
+          apiKeyInput.value = '';
+          if (clearInputBtn) clearInputBtn.style.display = 'none';
+          setTimeout(() => apiKeyInput.focus(), 80);
+        }
+      }
     });
   }
 
-  // Save API key
-  if (saveKeyBtn && apiKeyInput) {
-    saveKeyBtn.addEventListener('click', () => {
-      const key = apiKeyInput.value.trim();
-      if (!key) {
-        showWidgetAlert('error', 'Vui lòng nhập API key.');
-        return;
+  // Keyboard shortcut protection & Enter to submit
+  if (apiKeyInput) {
+    apiKeyInput.addEventListener('keydown', (e) => {
+      e.stopPropagation();
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        handleSaveApiKey();
       }
-      chrome.runtime.sendMessage({ action: 'setGeminiApiKey', key }, (res) => {
-        if (res && res.ok) {
-          apiKeyInput.value = '';
-          apiKeyInput.placeholder = '••••••••••••••• (đã lưu)';
-          showWidgetAlert('success', wt('apiKeySaved'));
-          // Close settings panel after save
-          if (settingsPanel) settingsPanel.style.display = 'none';
+    });
+    apiKeyInput.addEventListener('keyup', (e) => e.stopPropagation());
+    apiKeyInput.addEventListener('keypress', (e) => e.stopPropagation());
+    apiKeyInput.addEventListener('input', () => {
+      if (clearInputBtn) {
+        clearInputBtn.style.display = apiKeyInput.value.length > 0 ? 'flex' : 'none';
+      }
+    });
+  }
+
+  // Clear input button
+  if (clearInputBtn && apiKeyInput) {
+    clearInputBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      apiKeyInput.value = '';
+      clearInputBtn.style.display = 'none';
+      apiKeyInput.focus();
+    });
+  }
+
+  // Toggle eye visibility
+  if (toggleEyeBtn && apiKeyInput) {
+    toggleEyeBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      if (apiKeyInput.type === 'password') {
+        apiKeyInput.type = 'text';
+        toggleEyeBtn.textContent = '🙈';
+      } else {
+        apiKeyInput.type = 'password';
+        toggleEyeBtn.textContent = '👁️';
+      }
+    });
+  }
+
+  // Delete saved API key
+  if (deleteKeyBtn) {
+    deleteKeyBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      chrome.runtime.sendMessage({ action: 'removeGeminiApiKey' }, (res) => {
+        if (apiKeyInput) apiKeyInput.value = '';
+        if (clearInputBtn) clearInputBtn.style.display = 'none';
+        showWidgetAlert('warning', wt('apiKeyDeleted'));
+        refreshWidgetApiKeyUI();
+      });
+    });
+  }
+
+  // Save API key handler
+  function handleSaveApiKey() {
+    if (!apiKeyInput) return;
+    const key = apiKeyInput.value.trim();
+    if (!key) {
+      chrome.runtime.sendMessage({ action: 'getGeminiApiKey' }, (res) => {
+        if (res?.apiKey) {
+          showWidgetAlert('warning', wt('apiKeyPromptPaste'));
         } else {
-          showWidgetAlert('error', 'Không thể lưu API key. Thử lại.');
+          showWidgetAlert('error', wt('apiKeyEmptyErr'));
         }
       });
+      return;
+    }
+    chrome.runtime.sendMessage({ action: 'setGeminiApiKey', key }, (res) => {
+      if (res && res.ok) {
+        apiKeyInput.value = '';
+        if (clearInputBtn) clearInputBtn.style.display = 'none';
+        showWidgetAlert('success', wt('apiKeySaved'));
+        refreshWidgetApiKeyUI();
+      } else {
+        showWidgetAlert('error', 'Không thể lưu API key. Thử lại.');
+      }
+    });
+  }
+
+  if (saveKeyBtn) {
+    saveKeyBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      handleSaveApiKey();
     });
   }
 

@@ -31,7 +31,20 @@ const I18N = {
     btnRate: '⭐ Rate 5 Stars',
     notOnLesson: 'Please open a Coursera lesson page first.',
     notEnrolled: 'Permission denied. Make sure you are enrolled in the course.',
-    unknownError: 'An error occurred. Check Console (F12).'
+    unknownError: 'An error occurred. Check Console (F12).',
+    settingsTitle: 'AI Settings (Gemini)',
+    apiKeyLabel: 'Gemini API Key',
+    apiKeySave: 'Save',
+    apiKeySaved: '✅ API key saved successfully!',
+    apiKeyActive: 'Key saved',
+    apiKeyNone: 'No key saved',
+    apiKeyEnterNew: 'Paste new key to replace...',
+    apiKeyDefaultPlaceholder: 'Paste Gemini API Key (AIzaSy...)',
+    apiKeyDelete: 'Delete key',
+    apiKeyDeleted: '🗑️ API key deleted!',
+    apiKeyEmptyErr: 'Please enter an API key.',
+    apiKeyPromptPaste: 'Please paste a new key into the box to replace.',
+    apiKeyHint: 'Get a free key at Google AI Studio (aistudio.google.com)',
   },
   vi: {
     langBadge: 'VI',
@@ -63,7 +76,20 @@ const I18N = {
     btnRate: '⭐ Đánh giá 5 sao',
     notOnLesson: 'Vui lòng mở trang bài học Coursera trước.',
     notEnrolled: 'Không có quyền. Hãy chắc chắn bạn đã đăng ký khóa học.',
-    unknownError: 'Đã xảy ra lỗi. Kiểm tra Console (F12).'
+    unknownError: 'Đã xảy ra lỗi. Kiểm tra Console (F12).',
+    settingsTitle: 'Cài đặt AI (Gemini)',
+    apiKeyLabel: 'Gemini API Key',
+    apiKeySave: 'Lưu',
+    apiKeySaved: '✅ Đã lưu API key thành công!',
+    apiKeyActive: 'Đã lưu key',
+    apiKeyNone: 'Chưa có key',
+    apiKeyEnterNew: 'Dán key mới để thay đổi...',
+    apiKeyDefaultPlaceholder: 'Dán Gemini API Key (AIzaSy...)',
+    apiKeyDelete: 'Xóa key',
+    apiKeyDeleted: '🗑️ Đã xóa API key!',
+    apiKeyEmptyErr: 'Vui lòng nhập API key.',
+    apiKeyPromptPaste: 'Vui lòng dán key mới vào ô nhập để thay đổi.',
+    apiKeyHint: 'Lấy key miễn phí tại Google AI Studio (aistudio.google.com)',
   }
 };
 
@@ -130,9 +156,55 @@ function updateUILanguage() {
     document.getElementById('txt-btn-skip-all-discussions').textContent = t('btnSkipAllDiscussions');
   }
 
+  const settingsTitle = document.getElementById('txt-popup-settings-title');
+  if (settingsTitle) settingsTitle.textContent = `⚙️ ${t('settingsTitle')}`;
+  const apiKeyLabel = document.getElementById('txt-popup-api-key-label');
+  if (apiKeyLabel) apiKeyLabel.textContent = t('apiKeyLabel');
+  const saveKeyBtn = document.getElementById('popup-save-key-btn');
+  if (saveKeyBtn) saveKeyBtn.textContent = t('apiKeySave');
+  const deleteKeyTxt = document.getElementById('txt-popup-delete-key');
+  if (deleteKeyTxt) deleteKeyTxt.textContent = t('apiKeyDelete');
+  const apiKeyHint = document.getElementById('txt-popup-api-key-hint');
+  if (apiKeyHint) apiKeyHint.textContent = t('apiKeyHint');
+
+  refreshPopupApiKeyUI();
+
   if (currentContext && currentContext.itemType) {
     renderTypePill(currentContext.itemType);
   }
+}
+
+function refreshPopupApiKeyUI() {
+  const badge = document.getElementById('popup-key-status-badge');
+  const mask = document.getElementById('popup-key-mask-preview');
+  const input = document.getElementById('popup-api-key-input');
+  const deleteBtn = document.getElementById('popup-delete-key-btn');
+
+  chrome.runtime.sendMessage({ action: 'getGeminiApiKey' }, (res) => {
+    const key = res?.apiKey || null;
+    if (key && key.trim()) {
+      const masked = key.length > 8 ? `${key.slice(0, 4)}...${key.slice(-4)}` : '••••••••';
+      if (badge) {
+        badge.textContent = `● ${t('apiKeyActive')}`;
+        badge.style.background = 'rgba(16, 185, 129, 0.15)';
+        badge.style.color = '#34d399';
+        badge.style.border = '1px solid rgba(16, 185, 129, 0.3)';
+      }
+      if (mask) mask.textContent = `(${masked})`;
+      if (input) input.placeholder = t('apiKeyEnterNew');
+      if (deleteBtn) deleteBtn.style.display = 'inline-flex';
+    } else {
+      if (badge) {
+        badge.textContent = `○ ${t('apiKeyNone')}`;
+        badge.style.background = 'rgba(239, 68, 68, 0.12)';
+        badge.style.color = '#f87171';
+        badge.style.border = '1px solid rgba(239, 68, 68, 0.25)';
+      }
+      if (mask) mask.textContent = '';
+      if (input) input.placeholder = t('apiKeyDefaultPlaceholder');
+      if (deleteBtn) deleteBtn.style.display = 'none';
+    }
+  });
 }
 
 function renderTypePill(itemType) {
@@ -449,6 +521,106 @@ document.getElementById('btn-guide-action').addEventListener('click', async () =
     chrome.tabs.create({ url: 'https://www.coursera.org' });
   }
 });
+
+// Settings in Popup
+const settingsToggleBtn = document.getElementById('btn-settings-toggle');
+const popupSettings = document.getElementById('popup-settings');
+const popupKeyInput = document.getElementById('popup-api-key-input');
+const popupClearKeyBtn = document.getElementById('popup-clear-key-btn');
+const popupToggleEyeBtn = document.getElementById('popup-toggle-eye-btn');
+const popupSaveKeyBtn = document.getElementById('popup-save-key-btn');
+const popupDeleteKeyBtn = document.getElementById('popup-delete-key-btn');
+
+if (settingsToggleBtn && popupSettings) {
+  settingsToggleBtn.addEventListener('click', () => {
+    const isVisible = popupSettings.style.display !== 'none';
+    if (isVisible) {
+      popupSettings.style.display = 'none';
+    } else {
+      popupSettings.style.display = 'block';
+      refreshPopupApiKeyUI();
+      if (popupKeyInput) {
+        popupKeyInput.value = '';
+        if (popupClearKeyBtn) popupClearKeyBtn.style.display = 'none';
+        setTimeout(() => popupKeyInput.focus(), 80);
+      }
+    }
+  });
+}
+
+if (popupKeyInput) {
+  popupKeyInput.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      handlePopupSaveKey();
+    }
+  });
+  popupKeyInput.addEventListener('input', () => {
+    if (popupClearKeyBtn) {
+      popupClearKeyBtn.style.display = popupKeyInput.value.length > 0 ? 'flex' : 'none';
+    }
+  });
+}
+
+if (popupClearKeyBtn && popupKeyInput) {
+  popupClearKeyBtn.addEventListener('click', () => {
+    popupKeyInput.value = '';
+    popupClearKeyBtn.style.display = 'none';
+    popupKeyInput.focus();
+  });
+}
+
+if (popupToggleEyeBtn && popupKeyInput) {
+  popupToggleEyeBtn.addEventListener('click', () => {
+    if (popupKeyInput.type === 'password') {
+      popupKeyInput.type = 'text';
+      popupToggleEyeBtn.textContent = '🙈';
+    } else {
+      popupKeyInput.type = 'password';
+      popupToggleEyeBtn.textContent = '👁️';
+    }
+  });
+}
+
+if (popupDeleteKeyBtn) {
+  popupDeleteKeyBtn.addEventListener('click', () => {
+    chrome.runtime.sendMessage({ action: 'removeGeminiApiKey' }, () => {
+      if (popupKeyInput) popupKeyInput.value = '';
+      if (popupClearKeyBtn) popupClearKeyBtn.style.display = 'none';
+      showAlert('warning', t('apiKeyDeleted'));
+      refreshPopupApiKeyUI();
+    });
+  });
+}
+
+function handlePopupSaveKey() {
+  if (!popupKeyInput) return;
+  const key = popupKeyInput.value.trim();
+  if (!key) {
+    chrome.runtime.sendMessage({ action: 'getGeminiApiKey' }, (res) => {
+      if (res?.apiKey) {
+        showAlert('warning', t('apiKeyPromptPaste'));
+      } else {
+        showAlert('error', t('apiKeyEmptyErr'));
+      }
+    });
+    return;
+  }
+  chrome.runtime.sendMessage({ action: 'setGeminiApiKey', key }, (res) => {
+    if (res && res.ok) {
+      popupKeyInput.value = '';
+      if (popupClearKeyBtn) popupClearKeyBtn.style.display = 'none';
+      showAlert('success', t('apiKeySaved'));
+      refreshPopupApiKeyUI();
+    } else {
+      showAlert('error', t('unknownError'));
+    }
+  });
+}
+
+if (popupSaveKeyBtn) {
+  popupSaveKeyBtn.addEventListener('click', handlePopupSaveKey);
+}
 
 // Init
 updateUILanguage();

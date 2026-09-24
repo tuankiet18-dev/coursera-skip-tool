@@ -56,6 +56,7 @@ class Node {
     };
     this.style = {};
     this.id = '';
+    this.className = '';
   }
 
   getAttribute(name) {
@@ -951,6 +952,99 @@ async function runTests() {
       'Error must mention quiz context'
     );
     console.log('  -> PASS: autoAnswerGradedQuiz() correctly errors on non-quiz page\n');
+    passedCount++;
+  }
+
+  // TC-20: Gemini API key life cycle (save, change/overwrite, delete)
+  {
+    totalCount++;
+    console.log('TC-20: Gemini API key life cycle (save, change/overwrite, delete)...');
+    let storedKey = null;
+    const fakeBackground = (msg, callback) => {
+      if (msg.action === 'getGeminiApiKey') {
+        callback({ apiKey: storedKey });
+      } else if (msg.action === 'setGeminiApiKey') {
+        storedKey = msg.key || null;
+        callback({ ok: true });
+      } else if (msg.action === 'removeGeminiApiKey') {
+        storedKey = null;
+        callback({ ok: true });
+      }
+    };
+
+    // 1. Initial: no key
+    fakeBackground({ action: 'getGeminiApiKey' }, (res) => {
+      assert.strictEqual(res.apiKey, null, 'Initially key should be null');
+    });
+
+    // 2. Set key
+    fakeBackground({ action: 'setGeminiApiKey', key: 'AIzaSyFirstKey123' }, (res) => {
+      assert.strictEqual(res.ok, true);
+    });
+    fakeBackground({ action: 'getGeminiApiKey' }, (res) => {
+      assert.strictEqual(res.apiKey, 'AIzaSyFirstKey123', 'Key should be saved');
+    });
+
+    // 3. Change / Overwrite key
+    fakeBackground({ action: 'setGeminiApiKey', key: 'AIzaSySecondKey456' }, (res) => {
+      assert.strictEqual(res.ok, true);
+    });
+    fakeBackground({ action: 'getGeminiApiKey' }, (res) => {
+      assert.strictEqual(res.apiKey, 'AIzaSySecondKey456', 'Key should be updated to new value');
+    });
+
+    // 4. Remove key
+    fakeBackground({ action: 'removeGeminiApiKey' }, (res) => {
+      assert.strictEqual(res.ok, true);
+    });
+    fakeBackground({ action: 'getGeminiApiKey' }, (res) => {
+      assert.strictEqual(res.apiKey, null, 'Key should be removed');
+    });
+
+    console.log('  -> PASS: Gemini API key can be saved, changed, and deleted\n');
+    passedCount++;
+  }
+
+  // TC-21: refreshWidgetApiKeyUI updates status and placeholder correctly
+  {
+    totalCount++;
+    console.log('TC-21: refreshWidgetApiKeyUI updates status and placeholder correctly...');
+    const sb = createSandbox('https://www.coursera.org/learn/my-course/lecture/test');
+
+    let currentKey = 'AIzaSyTest12345678';
+    sb.chrome.runtime.sendMessage = (msg, cb) => {
+      if (msg.action === 'getGeminiApiKey') cb({ apiKey: currentKey });
+    };
+
+    // Mock widget elements
+    const badge = new HTMLElement('SPAN'); badge.id = 'cs-key-status-badge';
+    const mask = new HTMLElement('SPAN'); mask.id = 'cs-key-mask-preview';
+    const input = new HTMLInputElement(); input.id = 'cs-api-key-input';
+    const delBtn = new HTMLButtonElement(); delBtn.id = 'cs-delete-key-btn';
+
+    sb.window.widgetShadow = {
+      getElementById(id) {
+        if (id === 'cs-key-status-badge') return badge;
+        if (id === 'cs-key-mask-preview') return mask;
+        if (id === 'cs-api-key-input') return input;
+        if (id === 'cs-delete-key-btn') return delBtn;
+        return null;
+      }
+    };
+
+    // Run refreshWidgetApiKeyUI when key exists
+    vm.runInContext('refreshWidgetApiKeyUI()', sb);
+    assert.ok(badge.className.includes('active'), 'Badge should be active when key exists');
+    assert.ok(mask.textContent.includes('AIza'), 'Mask should show partial key');
+    assert.strictEqual(delBtn.style.display, 'inline-flex', 'Delete button should be shown');
+
+    // Run refreshWidgetApiKeyUI when key is null
+    currentKey = null;
+    vm.runInContext('refreshWidgetApiKeyUI()', sb);
+    assert.ok(badge.className.includes('empty'), 'Badge should be empty when key is null');
+    assert.strictEqual(delBtn.style.display, 'none', 'Delete button should be hidden');
+
+    console.log('  -> PASS: refreshWidgetApiKeyUI handles existing and removed key properly\n');
     passedCount++;
   }
 
