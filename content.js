@@ -1724,6 +1724,9 @@ const WIDGET_I18N = {
     apiKeyDeleted: '🗑️ Đã xóa API key!',
     apiKeyEmptyErr: 'Vui lòng nhập API key.',
     apiKeyPromptPaste: 'Vui lòng dán key mới vào ô nhập để thay đổi.',
+    apiKeyPaste: 'Dán',
+    apiKeyPasted: '📋 Đã dán key từ Clipboard!',
+    apiKeyPromptInput: 'Dán Gemini API Key (AIzaSy...) của bạn vào đây:',
   },
   en: {
     langBadge: 'EN',
@@ -1753,6 +1756,9 @@ const WIDGET_I18N = {
     apiKeyDeleted: '🗑️ API key deleted!',
     apiKeyEmptyErr: 'Please enter an API key.',
     apiKeyPromptPaste: 'Please paste a new key into the box to replace.',
+    apiKeyPaste: 'Paste',
+    apiKeyPasted: '📋 Key pasted from clipboard!',
+    apiKeyPromptInput: 'Paste your Gemini API Key (AIzaSy...) here:',
   }
 };
 
@@ -1914,6 +1920,9 @@ function updateWidgetLanguageUI() {
   const deleteKeyTxt = widgetShadow.getElementById('cs-delete-key-txt');
   if (deleteKeyTxt) deleteKeyTxt.textContent = wt('apiKeyDelete');
 
+  const pasteKeyTxt = widgetShadow.getElementById('cs-paste-key-txt');
+  if (pasteKeyTxt) pasteKeyTxt.textContent = wt('apiKeyPaste');
+
   if (langBtn) langBtn.textContent = wt('langBadge');
   if (statusLabel) statusLabel.textContent = wt('detected');
   if (metaLabel) metaLabel.textContent = wt('typeLabel');
@@ -1996,7 +2005,7 @@ function initFloatingWidget() {
       z-index: 2147483647;
       font-family: 'Inter', system-ui, -apple-system, sans-serif;
       font-size: 13px;
-      user-select: none;
+      user-select: auto;
       line-height: 1.4;
     }
 
@@ -2006,6 +2015,8 @@ function initFloatingWidget() {
       width: 50px;
       height: 50px;
       border-radius: 50%;
+      user-select: none;
+      -webkit-user-select: none;
       background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
       box-shadow: 0 6px 20px rgba(99, 102, 241, 0.45);
       cursor: pointer;
@@ -2063,6 +2074,8 @@ function initFloatingWidget() {
       align-items: center;
       justify-content: space-between;
       cursor: move;
+      user-select: none;
+      -webkit-user-select: none;
     }
     .cs-brand {
       display: flex;
@@ -2425,6 +2438,31 @@ function initFloatingWidget() {
       min-width: 0;
       user-select: text !important;
       -webkit-user-select: text !important;
+      cursor: text !important;
+      caret-color: #38bdf8 !important;
+      pointer-events: auto !important;
+    }
+    .cs-paste-key-btn {
+      background: rgba(56, 189, 248, 0.15);
+      border: 1px solid rgba(56, 189, 248, 0.35);
+      border-radius: 6px;
+      padding: 6px 9px;
+      font-size: 11px;
+      font-weight: 600;
+      color: #38bdf8;
+      cursor: pointer;
+      white-space: nowrap;
+      transition: all 0.2s;
+      flex-shrink: 0;
+      display: inline-flex;
+      align-items: center;
+      gap: 3px;
+    }
+    .cs-paste-key-btn:hover {
+      background: rgba(56, 189, 248, 0.25);
+      color: #fff;
+      border-color: rgba(56, 189, 248, 0.6);
+      transform: translateY(-1px);
     }
     .cs-api-key-input:focus {
       border-color: #6366f1;
@@ -2601,6 +2639,7 @@ function initFloatingWidget() {
                 <button type="button" class="cs-clear-input-btn" id="cs-clear-input-btn" title="Xóa ô nhập" style="display: none;">✕</button>
                 <button type="button" class="cs-toggle-eye-btn" id="cs-toggle-eye-btn" title="Hiện/Ẩn key">👁️</button>
               </div>
+              <button type="button" class="cs-paste-key-btn" id="cs-paste-key-btn" title="Dán key từ bộ nhớ tạm">📋 <span id="cs-paste-key-txt">Dán</span></button>
               <button type="button" class="cs-save-key-btn" id="cs-save-key-btn">Lưu</button>
             </div>
           </div>
@@ -2648,6 +2687,7 @@ function initFloatingWidget() {
   const settingsPanel = widgetShadow.getElementById('cs-settings');
   const apiKeyInput = widgetShadow.getElementById('cs-api-key-input');
   const saveKeyBtn = widgetShadow.getElementById('cs-save-key-btn');
+  const pasteKeyBtn = widgetShadow.getElementById('cs-paste-key-btn');
   const deleteKeyBtn = widgetShadow.getElementById('cs-delete-key-btn');
   const toggleEyeBtn = widgetShadow.getElementById('cs-toggle-eye-btn');
   const clearInputBtn = widgetShadow.getElementById('cs-clear-input-btn');
@@ -2716,8 +2756,14 @@ function initFloatingWidget() {
     });
   }
 
-  // Keyboard shortcut protection & Enter to submit
+  // Keyboard shortcut protection, click/focus trap prevention & Enter to submit
   if (apiKeyInput) {
+    apiKeyInput.addEventListener('mousedown', (e) => e.stopPropagation());
+    apiKeyInput.addEventListener('pointerdown', (e) => e.stopPropagation());
+    apiKeyInput.addEventListener('click', (e) => {
+      e.stopPropagation();
+      apiKeyInput.focus();
+    });
     apiKeyInput.addEventListener('keydown', (e) => {
       e.stopPropagation();
       if (e.key === 'Enter') {
@@ -2730,6 +2776,31 @@ function initFloatingWidget() {
     apiKeyInput.addEventListener('input', () => {
       if (clearInputBtn) {
         clearInputBtn.style.display = apiKeyInput.value.length > 0 ? 'flex' : 'none';
+      }
+    });
+  }
+
+  // Paste API key button (clipboard readText with prompt fallback)
+  if (pasteKeyBtn && apiKeyInput) {
+    pasteKeyBtn.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      let pastedText = '';
+      try {
+        if (navigator.clipboard && navigator.clipboard.readText) {
+          pastedText = await navigator.clipboard.readText();
+        }
+      } catch (_) {}
+
+      if (!pastedText || !pastedText.trim()) {
+        pastedText = window.prompt(wt('apiKeyPromptInput') || 'Gemini API Key:', '') || '';
+      }
+
+      pastedText = pastedText.trim();
+      if (pastedText) {
+        apiKeyInput.value = pastedText;
+        if (clearInputBtn) clearInputBtn.style.display = 'flex';
+        showWidgetAlert('success', wt('apiKeyPasted'));
+        apiKeyInput.focus();
       }
     });
   }

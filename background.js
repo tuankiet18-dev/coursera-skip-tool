@@ -50,29 +50,50 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       return true;
     }
 
-    const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`;
+    const candidateModels = ['gemini-3.8-flash', 'gemini-2.5-flash', 'gemini-1.5-flash'];
 
-    fetch(endpoint, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        contents: [{ parts: [{ text: prompt }] }],
-        generationConfig: {
-          temperature: 0.1,
-          maxOutputTokens: 2048,
-        },
-      }),
-    })
-      .then((r) => {
-        if (!r.ok) {
-          return r.text().then((t) => {
-            sendResponse({ ok: false, error: `HTTP ${r.status}: ${t.slice(0, 200)}` });
-          });
+    async function tryCallGemini(modelIndex = 0) {
+      if (modelIndex >= candidateModels.length) {
+        return { ok: false, error: 'Tất cả các model Gemini đều không khả dụng. Vui lòng kiểm tra lại API key.' };
+      }
+
+      const model = candidateModels[modelIndex];
+      const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
+
+      try {
+        const r = await fetch(endpoint, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            contents: [{ parts: [{ text: prompt }] }],
+            generationConfig: {
+              temperature: 0.1,
+              maxOutputTokens: 2048,
+            },
+          }),
+        });
+
+        // If model not found or deprecated (404), try next candidate model
+        if (r.status === 404 && modelIndex + 1 < candidateModels.length) {
+          return await tryCallGemini(modelIndex + 1);
         }
-        return r.json().then((data) => sendResponse({ ok: true, data }));
-      })
-      .catch((err) => sendResponse({ ok: false, error: err.message }));
 
+        if (!r.ok) {
+          const t = await r.text();
+          return { ok: false, error: `HTTP ${r.status}: ${t.slice(0, 200)}` };
+        }
+
+        const data = await r.json();
+        return { ok: true, data };
+      } catch (err) {
+        if (modelIndex + 1 < candidateModels.length) {
+          return await tryCallGemini(modelIndex + 1);
+        }
+        return { ok: false, error: err.message };
+      }
+    }
+
+    tryCallGemini().then(sendResponse);
     return true; // keep message channel open for async response
   }
 });
