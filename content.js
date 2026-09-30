@@ -1483,9 +1483,9 @@ function extractQuizQuestions() {
 function buildGeminiPrompt(questions) {
   const lines = [
     'You are an AI assistant helping answer a graded online quiz. Read each question carefully and select the best answer(s).',
-    'Return ONLY a valid JSON array (no explanation, no markdown fences) in this exact format:',
+    'Return ONLY a valid JSON array in this exact format (no explanation, no thoughts, no markdown):',
     '[{"q":1,"answers":[0]},{"q":2,"answers":[1,3]}]',
-    'Where "q" is the question number (1-based) and "answers" is a list of 0-based option indices.',
+    'Where "q" is the question number (1-based integer) and "answers" is a list of 0-based option indices.',
     'For single-choice, provide exactly 1 index. For multi-choice, provide the correct number of indices.',
     '',
     '=== QUESTIONS ===',
@@ -1533,24 +1533,63 @@ async function callGeminiWithRetry(apiKey, prompt, maxRetry = 2) {
     }
 
     // Extract text from Gemini response structure
-    const rawText = response.data?.candidates?.[0]?.content?.parts?.[0]?.text || '';
-    console.log('[CourseraSkip] Gemini raw response:', rawText.slice(0, 500));
+    const candidate = response.data?.candidates?.[0];
+    const parts = candidate?.content?.parts || [];
 
-    // Strip optional markdown code fences
-    const stripped = rawText
-      .replace(/^```(?:json)?\s*/i, '')
-      .replace(/\s*```$/i, '')
-      .trim();
+    // Filter out thought parts: Gemini 2.5/3.x thinking models return thought: true in parts[0]
+    const answerParts = parts.filter((p) => !p.thought && typeof p.text === 'string');
+    const rawText = answerParts.length > 0
+      ? answerParts.map((p) => p.text).join('')
+      : (parts[0]?.text || '');
 
+    console.log('[CourseraSkip] Gemini raw answer response:', rawText.slice(0, 500));
+
+    let parsed = null;
+    const trimmed = rawText.trim();
+
+    // 1. Direct JSON parse
     try {
-      const parsed = JSON.parse(stripped);
-      if (!Array.isArray(parsed)) throw new Error('Response is not an array');
-      return parsed;
-    } catch (parseErr) {
-      console.log(`[CourseraSkip] JSON parse attempt ${attempt + 1} failed:`, parseErr.message, '| raw:', stripped.slice(0, 200));
-      if (attempt === maxRetry) throw new Error(`Gemini trả về định dạng không hợp lệ: ${parseErr.message}`);
-      await sleep(1000);
+      parsed = JSON.parse(trimmed);
+    } catch (_) {}
+
+    // 2. Strip markdown fences if direct parse failed
+    if (!parsed || (!Array.isArray(parsed) && typeof parsed !== 'object')) {
+      const fenceMatch = trimmed.match(/```(?:json)?\s*([\s\S]*?)\s*```/i);
+      if (fenceMatch) {
+        try {
+          parsed = JSON.parse(fenceMatch[1].trim());
+        } catch (_) {}
+      }
     }
+
+    // 3. Extract [ ... ] array slice if still not parsed
+    if (!parsed || (!Array.isArray(parsed) && typeof parsed !== 'object')) {
+      const startIdx = trimmed.indexOf('[');
+      const endIdx = trimmed.lastIndexOf(']');
+      if (startIdx !== -1 && endIdx > startIdx) {
+        try {
+          parsed = JSON.parse(trimmed.slice(startIdx, endIdx + 1));
+        } catch (_) {}
+      }
+    }
+
+    // 4. Unwrap if wrapped in object (e.g. { answers: [...] } or { questions: [...] })
+    if (parsed && !Array.isArray(parsed) && typeof parsed === 'object') {
+      if (Array.isArray(parsed.answers)) parsed = parsed.answers;
+      else if (Array.isArray(parsed.questions)) parsed = parsed.questions;
+      else if (Array.isArray(parsed.results)) parsed = parsed.results;
+      else if (Array.isArray(parsed.data)) parsed = parsed.data;
+    }
+
+    if (Array.isArray(parsed) && parsed.length > 0) {
+      return parsed;
+    }
+
+    console.log(`[CourseraSkip] JSON parse attempt ${attempt + 1} failed | raw:`, rawText.slice(0, 200));
+    if (attempt === maxRetry) {
+      throw new Error(`Gemini trả về định dạng không hợp lệ: không thể trích xuất danh sách đáp án JSON.`);
+    }
+    await sleep(1000);
   }
 }
 
@@ -1562,11 +1601,22 @@ function fillQuizAnswers(questions, answersFromAI) {
   let filled = 0;
 
   answersFromAI.forEach((item) => {
-    const qIdx = item.q - 1; // convert 1-based to 0-based
+    const qNum = item.q ?? item.question ?? item.questionNumber;
+    if (typeof qNum !== 'number') return;
+    const qIdx = qNum - 1; // convert 1-based to 0-based
     const q = questions[qIdx];
     if (!q) return;
 
-    const selectedIndices = Array.isArray(item.answers) ? item.answers : [];
+    let selectedIndices = [];
+    if (Array.isArray(item.answers)) {
+      selectedIndices = item.answers;
+    } else if (Array.isArray(item.answer)) {
+      selectedIndices = item.answer;
+    } else if (typeof item.answer === 'number') {
+      selectedIndices = [item.answer];
+    } else if (typeof item.answers === 'number') {
+      selectedIndices = [item.answers];
+    }
 
     selectedIndices.forEach((optIdx) => {
       const opt = q.options[optIdx];
@@ -1582,7 +1632,7 @@ function fillQuizAnswers(questions, answersFromAI) {
       inp.dispatchEvent(new Event('change', { bubbles: true }));
       inp.dispatchEvent(new Event('input', { bubbles: true }));
 
-      console.log(`[CourseraSkip] Filled Q${item.q} option[${optIdx}]: ${opt.label}`);
+      console.log(`[CourseraSkip] Filled Q${qNum} option[${optIdx}]: ${opt.label}`);
       filled++;
     });
   });

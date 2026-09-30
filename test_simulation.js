@@ -1048,6 +1048,76 @@ async function runTests() {
     passedCount++;
   }
 
+  // TC-22: callGeminiWithRetry() filters out thought parts (thought: true)
+  {
+    totalCount++;
+    console.log('TC-22: callGeminiWithRetry() filters out thought parts with unterminated strings...');
+    const sb = createSandbox('https://www.coursera.org/learn/my-course/assignment-submission/abc/quiz/attempt');
+
+    // Mock Gemini 2.5 / 3.x thinking model response structure
+    sb.chrome.runtime.sendMessage = (msg, callback) => {
+      const fakeGeminiResponse = {
+        candidates: [{
+          content: {
+            parts: [
+              {
+                thought: true,
+                text: 'Thinking process:\n1. The user asks about ethical data driven technologies.\nLine 7: "Unterminated string in thought... ',
+              },
+              {
+                thought: false,
+                text: '[{"q":1,"answers":[0]},{"q":2,"answers":[1,2]}]',
+              },
+            ],
+          },
+        }],
+      };
+      callback({ ok: true, data: fakeGeminiResponse });
+    };
+
+    const result = await vm.runInContext('callGeminiWithRetry("fakekey", "prompt")', sb);
+
+    assert.ok(Array.isArray(result), 'Result should be an array');
+    assert.strictEqual(result.length, 2, 'Should have 2 answer items');
+    assert.strictEqual(result[0].q, 1);
+    assert.deepEqual(result[0].answers, [0]);
+    assert.strictEqual(result[1].q, 2);
+    assert.deepEqual(result[1].answers, [1, 2]);
+    console.log('  -> PASS: callGeminiWithRetry() successfully filtered thought parts and extracted valid JSON\n');
+    passedCount++;
+  }
+
+  // TC-23: callGeminiWithRetry() handles object wrapping and outer conversational text
+  {
+    totalCount++;
+    console.log('TC-23: callGeminiWithRetry() handles object wrapping and outer conversational text...');
+    const sb = createSandbox('https://www.coursera.org/learn/my-course/assignment-submission/abc/quiz/attempt');
+
+    // Object wrapping with text before and after
+    sb.chrome.runtime.sendMessage = (msg, callback) => {
+      const rawText = 'Sure! Here are your answers:\n```json\n{"answers": [{"q": 1, "answers": [2]}, {"q": 2, "answers": [0]}]}\n```\nGood luck on your quiz!';
+      const fakeGeminiResponse = {
+        candidates: [{
+          content: {
+            parts: [{ text: rawText }],
+          },
+        }],
+      };
+      callback({ ok: true, data: fakeGeminiResponse });
+    };
+
+    const result = await vm.runInContext('callGeminiWithRetry("fakekey", "prompt")', sb);
+
+    assert.ok(Array.isArray(result), 'Result should unwrap to an array');
+    assert.strictEqual(result.length, 2);
+    assert.strictEqual(result[0].q, 1);
+    assert.deepEqual(result[0].answers, [2]);
+    assert.strictEqual(result[1].q, 2);
+    assert.deepEqual(result[1].answers, [0]);
+    console.log('  -> PASS: callGeminiWithRetry() successfully unwrapped object and extracted answers\n');
+    passedCount++;
+  }
+
   console.log('====================================================');
   console.log(`RESULTS: ${passedCount} / ${totalCount} TESTS PASSED!`);
   console.log('====================================================');

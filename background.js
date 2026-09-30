@@ -52,7 +52,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
     const candidateModels = ['gemini-3.8-flash', 'gemini-2.5-flash', 'gemini-1.5-flash'];
 
-    async function tryCallGemini(modelIndex = 0) {
+    async function tryCallGemini(modelIndex = 0, withThinkingConfig = true) {
       if (modelIndex >= candidateModels.length) {
         return { ok: false, error: 'Tất cả các model Gemini đều không khả dụng. Vui lòng kiểm tra lại API key.' };
       }
@@ -60,22 +60,37 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       const model = candidateModels[modelIndex];
       const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
 
+      const generationConfig = {
+        temperature: 0.1,
+        maxOutputTokens: 8192,
+        responseMimeType: 'application/json',
+      };
+
+      // Disable thinking budget on Flash models to prevent latency & wasted token budget
+      if (withThinkingConfig && !model.includes('1.5')) {
+        generationConfig.thinkingConfig = {
+          thinkingBudget: 0,
+        };
+      }
+
       try {
         const r = await fetch(endpoint, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             contents: [{ parts: [{ text: prompt }] }],
-            generationConfig: {
-              temperature: 0.1,
-              maxOutputTokens: 2048,
-            },
+            generationConfig,
           }),
         });
 
         // If model not found or deprecated (404), try next candidate model
         if (r.status === 404 && modelIndex + 1 < candidateModels.length) {
-          return await tryCallGemini(modelIndex + 1);
+          return await tryCallGemini(modelIndex + 1, withThinkingConfig);
+        }
+
+        // If 400 Bad Request with thinkingConfig, retry without thinkingConfig
+        if (r.status === 400 && withThinkingConfig && generationConfig.thinkingConfig) {
+          return await tryCallGemini(modelIndex, false);
         }
 
         if (!r.ok) {
@@ -87,7 +102,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         return { ok: true, data };
       } catch (err) {
         if (modelIndex + 1 < candidateModels.length) {
-          return await tryCallGemini(modelIndex + 1);
+          return await tryCallGemini(modelIndex + 1, withThinkingConfig);
         }
         return { ok: false, error: err.message };
       }
