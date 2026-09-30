@@ -427,6 +427,41 @@
       color: #000;
     }
 
+    .provider-tabs {
+      display: flex;
+      gap: 4px;
+      background: rgba(30, 41, 59, 0.7);
+      padding: 3px;
+      border-radius: 8px;
+      border: 1px solid var(--card-border);
+      margin-bottom: 8px;
+    }
+    .provider-tab {
+      flex: 1;
+      padding: 5px 4px;
+      background: transparent;
+      border: 1px solid transparent;
+      border-radius: 6px;
+      color: var(--text-muted);
+      font-size: 10px;
+      font-weight: 600;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 3px;
+      transition: all 0.2s;
+    }
+    .provider-tab:hover {
+      color: #fff;
+      background: rgba(255, 255, 255, 0.05);
+    }
+    .provider-tab.active {
+      background: rgba(99, 102, 241, 0.25);
+      border-color: rgba(99, 102, 241, 0.5);
+      color: #fff;
+    }
+
     /* Progress UI */
     .progress-container {
       display: none;
@@ -521,9 +556,17 @@
     <!-- Settings Card (Collapsible) -->
     <div id="popup-settings" class="card" style="display: none;">
       <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px;">
-        <span style="font-size: 11px; font-weight: 700; color: #a5b4fc;" id="txt-popup-settings-title">⚙️ Cài đặt AI (Gemini)</span>
+        <span style="font-size: 11px; font-weight: 700; color: #a5b4fc;" id="txt-popup-settings-title">⚙️ Cài đặt AI (Gemini / GPT / Groq)</span>
         <span id="popup-key-status-badge" style="font-size: 10px; padding: 2px 7px; border-radius: 10px; font-weight: 600;">○ Chưa có key</span>
       </div>
+
+      <!-- Provider Tabs -->
+      <div class="provider-tabs" id="popup-provider-tabs">
+        <button type="button" class="provider-tab active" data-provider="gemini">♊ Gemini</button>
+        <button type="button" class="provider-tab" data-provider="openai">🟢 OpenAI</button>
+        <button type="button" class="provider-tab" data-provider="groq">⚡ Groq</button>
+      </div>
+
       <div style="display: flex; flex-direction: column; gap: 6px;">
         <div style="display: flex; justify-content: space-between; align-items: center;">
           <label style="font-size: 10px; font-weight: 600; color: #94a3b8;" id="txt-popup-api-key-label">Gemini API Key</label>
@@ -536,6 +579,7 @@
             <button type="button" id="popup-clear-key-btn" title="Clear input" style="position: absolute; right: 23px; background: transparent; border: none; color: #94a3b8; cursor: pointer; padding: 2px 4px; font-size: 11px; display: none;">✕</button>
             <button type="button" id="popup-toggle-eye-btn" title="Toggle visibility" style="position: absolute; right: 5px; background: transparent; border: none; color: #94a3b8; cursor: pointer; padding: 2px 4px; font-size: 11px;">👁️</button>
           </div>
+          <button type="button" id="popup-paste-key-btn" style="background: rgba(56, 189, 248, 0.15); border: 1px solid rgba(56, 189, 248, 0.35); border-radius: 6px; padding: 6px 9px; font-size: 11px; font-weight: 600; color: #38bdf8; cursor: pointer; white-space: nowrap;">📋 <span id="txt-popup-paste-key">Dán</span></button>
           <button type="button" id="popup-save-key-btn" style="background: var(--grad-primary); border: none; border-radius: 6px; padding: 6px 12px; font-size: 11px; font-weight: 700; color: #fff; cursor: pointer; white-space: nowrap;">Lưu</button>
         </div>
         <div style="display: flex; justify-content: flex-end; margin-top: 2px;">

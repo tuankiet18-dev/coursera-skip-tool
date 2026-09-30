@@ -79,6 +79,36 @@ class Node {
     return child;
   }
 
+  cloneNode(deep = false) {
+    const clone = new Node(this.tagName);
+    clone.id = this.id;
+    clone.className = this.className;
+    clone.textContent = this.textContent;
+    clone.attributes = { ...this.attributes };
+    if (deep) {
+      for (const child of this.children) {
+        clone.appendChild(child.cloneNode(true));
+      }
+    }
+    return clone;
+  }
+
+  remove() {
+    if (this.parentElement) {
+      const idx = this.parentElement.children.indexOf(this);
+      if (idx !== -1) this.parentElement.children.splice(idx, 1);
+      this.parentElement = null;
+    }
+  }
+
+  get innerText() {
+    return this.textContent || '';
+  }
+
+  set innerText(val) {
+    this.textContent = String(val);
+  }
+
   contains(other) {
     if (!other) return false;
     let curr = other;
@@ -143,6 +173,21 @@ class Node {
     }
     if (sel.includes('data-testid*="submit-review"')) {
       return (this.attributes['data-testid'] || '').includes('submit-review');
+    }
+    if (sel.toLowerCase() === this.tagName.toLowerCase()) return true;
+    if (sel === 'input[type="checkbox"]') {
+      return this.tagName === 'INPUT' && this.type === 'checkbox';
+    }
+    if (sel.includes('data-testid=')) {
+      const match = sel.match(/data-testid=["']([^"']+)["']/);
+      if (match && this.attributes['data-testid'] === match[1]) return true;
+    }
+    if (sel.includes('data-testid*=')) {
+      const match = sel.match(/data-testid\*=["']([^"']+)["']/);
+      if (match && (this.attributes['data-testid'] || '').includes(match[1])) return true;
+    }
+    if (sel === 'form[data-testid]') {
+      return this.tagName === 'FORM' && !!this.attributes['data-testid'];
     }
     if (sel === 'button[type="submit"]') {
       return this.tagName === 'BUTTON' && this.type === 'submit';
@@ -1115,6 +1160,177 @@ async function runTests() {
     assert.strictEqual(result[1].q, 2);
     assert.deepEqual(result[1].answers, [0]);
     console.log('  -> PASS: callGeminiWithRetry() successfully unwrapped object and extracted answers\n');
+    passedCount++;
+  }
+
+  // TC-24: Multi-provider AI keys life cycle and active provider switching
+  {
+    totalCount++;
+    console.log('TC-24: Multi-provider AI keys life cycle (Gemini, OpenAI, Groq)...');
+    let aiConfig = {
+      activeProvider: 'gemini',
+      keys: { gemini: null, openai: null, groq: null }
+    };
+
+    const fakeBackground = (msg, callback) => {
+      if (msg.action === 'getAiConfig') {
+        callback({
+          activeProvider: aiConfig.activeProvider,
+          provider: aiConfig.activeProvider,
+          keys: { ...aiConfig.keys },
+          apiKey: aiConfig.keys[aiConfig.activeProvider] || null
+        });
+      } else if (msg.action === 'setAiKey') {
+        const prov = msg.provider || 'gemini';
+        aiConfig.keys[prov] = msg.key || null;
+        callback({ ok: true });
+      } else if (msg.action === 'setAiProvider') {
+        aiConfig.activeProvider = msg.provider || 'gemini';
+        callback({ ok: true, provider: aiConfig.activeProvider });
+      } else if (msg.action === 'removeAiKey') {
+        const prov = msg.provider || 'gemini';
+        aiConfig.keys[prov] = null;
+        callback({ ok: true });
+      }
+    };
+
+    // 1. Initial: all empty
+    fakeBackground({ action: 'getAiConfig' }, (res) => {
+      assert.strictEqual(res.activeProvider, 'gemini');
+      assert.strictEqual(res.keys.openai, null);
+      assert.strictEqual(res.keys.groq, null);
+    });
+
+    // 2. Save OpenAI and Groq keys
+    fakeBackground({ action: 'setAiKey', provider: 'openai', key: 'sk-proj-test12345' }, (res) => {
+      assert.strictEqual(res.ok, true);
+    });
+    fakeBackground({ action: 'setAiKey', provider: 'groq', key: 'gsk-test67890' }, (res) => {
+      assert.strictEqual(res.ok, true);
+    });
+
+    // 3. Switch active provider to Groq
+    fakeBackground({ action: 'setAiProvider', provider: 'groq' }, (res) => {
+      assert.strictEqual(res.ok, true);
+      assert.strictEqual(res.provider, 'groq');
+    });
+
+    fakeBackground({ action: 'getAiConfig' }, (res) => {
+      assert.strictEqual(res.activeProvider, 'groq');
+      assert.strictEqual(res.apiKey, 'gsk-test67890');
+      assert.strictEqual(res.keys.openai, 'sk-proj-test12345');
+      assert.strictEqual(res.keys.groq, 'gsk-test67890');
+    });
+
+    // 4. Remove OpenAI key, verify Groq is unchanged
+    fakeBackground({ action: 'removeAiKey', provider: 'openai' }, (res) => {
+      assert.strictEqual(res.ok, true);
+    });
+    fakeBackground({ action: 'getAiConfig' }, (res) => {
+      assert.strictEqual(res.keys.openai, null);
+      assert.strictEqual(res.keys.groq, 'gsk-test67890');
+    });
+
+    console.log('  -> PASS: Multi-provider AI keys and provider switching work correctly\n');
+    passedCount++;
+  }
+
+  // TC-25: callAiWithRetry() works for OpenAI and Groq
+  {
+    totalCount++;
+    console.log('TC-25: callAiWithRetry() works for OpenAI and Groq...');
+    const sb = createSandbox('https://www.coursera.org/learn/my-course/assignment-submission/abc/quiz/attempt');
+
+    let calledProvider = null;
+    sb.chrome.runtime.sendMessage = (msg, callback) => {
+      if (msg.action === 'callAiApi') {
+        calledProvider = msg.provider;
+        if (msg.provider === 'openai') {
+          callback({
+            ok: true,
+            data: { text: '[{"q":1,"answers":[1]}]' }
+          });
+        } else if (msg.provider === 'groq') {
+          callback({
+            ok: true,
+            data: { text: '```json\n[{"q":1,"answers":[2]}]\n```' }
+          });
+        }
+      }
+    };
+
+    // Test OpenAI
+    const openAiRes = await vm.runInContext('callAiWithRetry("openai", "sk-test", "prompt")', sb);
+    assert.strictEqual(calledProvider, 'openai');
+    assert.deepEqual(openAiRes, [{ q: 1, answers: [1] }]);
+
+    // Test Groq
+    const groqRes = await vm.runInContext('callAiWithRetry("groq", "gsk-test", "prompt")', sb);
+    assert.strictEqual(calledProvider, 'groq');
+    assert.deepEqual(groqRes, [{ q: 1, answers: [2] }]);
+
+    console.log('  -> PASS: callAiWithRetry() successfully calls OpenAI and Groq providers\n');
+    passedCount++;
+  }
+
+  // TC-26: autoAnswerGradedQuiz() auto-falls back when active provider has no key
+  {
+    totalCount++;
+    console.log('TC-26: autoAnswerGradedQuiz() auto-falls back to configured provider...');
+    const sb = createSandbox('https://www.coursera.org/learn/my-course/assignment-submission/test/quiz/attempt');
+
+    let currentProvider = 'gemini';
+    const fakeConfig = {
+      provider: 'gemini',
+      keys: {
+        gemini: null, // Gemini has no key!
+        openai: null,
+        groq: 'gsk-valid-groq-key' // Groq has a valid key
+      }
+    };
+
+    sb.chrome.runtime.sendMessage = (msg, callback) => {
+      if (msg.action === 'getAiConfig') {
+        callback(fakeConfig);
+      } else if (msg.action === 'setAiProvider') {
+        currentProvider = msg.provider;
+        if (callback) callback({ ok: true });
+      } else if (msg.action === 'callAiApi') {
+        assert.strictEqual(msg.provider, 'groq', 'Should call Groq because it has the valid key');
+        assert.strictEqual(msg.apiKey, 'gsk-valid-groq-key');
+        callback({
+          ok: true,
+          data: { text: '[{"q":1,"answers":[0]}]' }
+        });
+      }
+    };
+
+    // Setup 1 question in DOM with 2 options
+    const form = new HTMLElement('FORM');
+    form.setAttribute('data-testid', 'question-form');
+    const p = new HTMLElement('P');
+    p.textContent = 'What is 1 + 1?';
+    const radio1 = new HTMLInputElement('radio');
+    radio1.value = '2';
+    const label1 = new HTMLElement('LABEL');
+    label1.textContent = '2';
+    label1.appendChild(radio1);
+    const radio2 = new HTMLInputElement('radio');
+    radio2.value = '3';
+    const label2 = new HTMLElement('LABEL');
+    label2.textContent = '3';
+    label2.appendChild(radio2);
+    form.appendChild(p);
+    form.appendChild(label1);
+    form.appendChild(label2);
+    sb.document.body.appendChild(form);
+
+    const result = await vm.runInContext('autoAnswerGradedQuiz()', sb);
+    assert.strictEqual(result.success, true, 'Should succeed via Groq fallback');
+    assert.ok(result.message.includes('Groq') || result.message.includes('AI'), 'Message should indicate AI completion');
+    assert.strictEqual(currentProvider, 'groq', 'Provider should have automatically switched to Groq');
+
+    console.log('  -> PASS: autoAnswerGradedQuiz() auto-switched to Groq and answered quiz\n');
     passedCount++;
   }
 

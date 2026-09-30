@@ -32,19 +32,21 @@ const I18N = {
     notOnLesson: 'Please open a Coursera lesson page first.',
     notEnrolled: 'Permission denied. Make sure you are enrolled in the course.',
     unknownError: 'An error occurred. Check Console (F12).',
-    settingsTitle: 'AI Settings (Gemini)',
-    apiKeyLabel: 'Gemini API Key',
+    settingsTitle: 'AI Settings (Gemini / GPT / Groq)',
+    apiKeyLabel: 'API Key',
     apiKeySave: 'Save',
     apiKeySaved: '✅ API key saved successfully!',
     apiKeyActive: 'Key saved',
     apiKeyNone: 'No key saved',
     apiKeyEnterNew: 'Paste new key to replace...',
-    apiKeyDefaultPlaceholder: 'Paste Gemini API Key (AIzaSy...)',
+    apiKeyDefaultPlaceholder: 'Paste API Key...',
     apiKeyDelete: 'Delete key',
     apiKeyDeleted: '🗑️ API key deleted!',
     apiKeyEmptyErr: 'Please enter an API key.',
     apiKeyPromptPaste: 'Please paste a new key into the box to replace.',
-    apiKeyHint: 'Get a free key at Google AI Studio (aistudio.google.com)',
+    apiKeyHint: 'Select provider and enter your API key.',
+    apiKeyPaste: 'Paste',
+    apiKeyPasted: '📋 Key pasted from clipboard!',
   },
   vi: {
     langBadge: 'VI',
@@ -77,21 +79,58 @@ const I18N = {
     notOnLesson: 'Vui lòng mở trang bài học Coursera trước.',
     notEnrolled: 'Không có quyền. Hãy chắc chắn bạn đã đăng ký khóa học.',
     unknownError: 'Đã xảy ra lỗi. Kiểm tra Console (F12).',
-    settingsTitle: 'Cài đặt AI (Gemini)',
-    apiKeyLabel: 'Gemini API Key',
+    settingsTitle: 'Cài đặt AI (Gemini / GPT / Groq)',
+    apiKeyLabel: 'API Key',
     apiKeySave: 'Lưu',
     apiKeySaved: '✅ Đã lưu API key thành công!',
     apiKeyActive: 'Đã lưu key',
     apiKeyNone: 'Chưa có key',
     apiKeyEnterNew: 'Dán key mới để thay đổi...',
-    apiKeyDefaultPlaceholder: 'Dán Gemini API Key (AIzaSy...)',
+    apiKeyDefaultPlaceholder: 'Dán API Key...',
     apiKeyDelete: 'Xóa key',
     apiKeyDeleted: '🗑️ Đã xóa API key!',
     apiKeyEmptyErr: 'Vui lòng nhập API key.',
     apiKeyPromptPaste: 'Vui lòng dán key mới vào ô nhập để thay đổi.',
-    apiKeyHint: 'Lấy key miễn phí tại Google AI Studio (aistudio.google.com)',
+    apiKeyHint: 'Chọn nhà cung cấp và nhập API key tương ứng.',
+    apiKeyPaste: 'Dán',
+    apiKeyPasted: '📋 Đã dán key từ Clipboard!',
   }
 };
+
+const AI_PROVIDERS = {
+  gemini: {
+    id: 'gemini',
+    name: 'Gemini',
+    icon: '♊',
+    placeholder: 'AIzaSy...',
+    labelVi: 'Gemini API Key',
+    labelEn: 'Gemini API Key',
+    hintVi: 'Lấy key miễn phí tại Google AI Studio (aistudio.google.com)',
+    hintEn: 'Get a free key at Google AI Studio (aistudio.google.com)',
+  },
+  openai: {
+    id: 'openai',
+    name: 'OpenAI (GPT)',
+    icon: '🟢',
+    placeholder: 'sk-proj-... / sk-...',
+    labelVi: 'OpenAI (GPT) API Key',
+    labelEn: 'OpenAI (GPT) API Key',
+    hintVi: 'Lấy key tại OpenAI Platform (platform.openai.com)',
+    hintEn: 'Get your key at OpenAI Platform (platform.openai.com)',
+  },
+  groq: {
+    id: 'groq',
+    name: 'Groq',
+    icon: '⚡',
+    placeholder: 'gsk_...',
+    labelVi: 'Groq API Key',
+    labelEn: 'Groq API Key',
+    hintVi: 'Lấy key siêu tốc, miễn phí tại GroqCloud (console.groq.com)',
+    hintEn: 'Get a free, ultra-fast key at GroqCloud (console.groq.com)',
+  },
+};
+
+let currentPopupProvider = 'gemini';
 
 const TYPE_CONFIG = {
   course: { icon: '🎓', en: 'Course Overview', vi: 'Trang khóa học' },
@@ -162,6 +201,8 @@ function updateUILanguage() {
   if (apiKeyLabel) apiKeyLabel.textContent = t('apiKeyLabel');
   const saveKeyBtn = document.getElementById('popup-save-key-btn');
   if (saveKeyBtn) saveKeyBtn.textContent = t('apiKeySave');
+  const pasteKeyTxt = document.getElementById('txt-popup-paste-key');
+  if (pasteKeyTxt) pasteKeyTxt.textContent = t('apiKeyPaste');
   const deleteKeyTxt = document.getElementById('txt-popup-delete-key');
   if (deleteKeyTxt) deleteKeyTxt.textContent = t('apiKeyDelete');
   const apiKeyHint = document.getElementById('txt-popup-api-key-hint');
@@ -174,14 +215,41 @@ function updateUILanguage() {
   }
 }
 
-function refreshPopupApiKeyUI() {
+function refreshPopupApiKeyUI(preferredProvider) {
   const badge = document.getElementById('popup-key-status-badge');
   const mask = document.getElementById('popup-key-mask-preview');
   const input = document.getElementById('popup-api-key-input');
   const deleteBtn = document.getElementById('popup-delete-key-btn');
+  const label = document.getElementById('txt-popup-api-key-label');
+  const hint = document.getElementById('txt-popup-api-key-hint');
+  const tabs = document.querySelectorAll('.provider-tab');
 
-  chrome.runtime.sendMessage({ action: 'getGeminiApiKey' }, (res) => {
-    const key = res?.apiKey || null;
+  function renderWithConfig(cfg) {
+    if (preferredProvider && AI_PROVIDERS[preferredProvider]) {
+      currentPopupProvider = preferredProvider;
+    } else if (cfg?.activeProvider && AI_PROVIDERS[cfg.activeProvider]) {
+      currentPopupProvider = cfg.activeProvider;
+    }
+
+    tabs.forEach((tab) => {
+      if (tab.dataset.provider === currentPopupProvider) {
+        tab.classList.add('active');
+      } else {
+        tab.classList.remove('active');
+      }
+    });
+
+    const provInfo = AI_PROVIDERS[currentPopupProvider] || AI_PROVIDERS.gemini;
+    const keys = cfg?.keys || {};
+    const key = keys[currentPopupProvider] || (currentPopupProvider === 'gemini' ? (cfg?.apiKey || null) : null);
+
+    if (label) {
+      label.textContent = currentLang === 'vi' ? provInfo.labelVi : provInfo.labelEn;
+    }
+    if (hint) {
+      hint.textContent = currentLang === 'vi' ? provInfo.hintVi : provInfo.hintEn;
+    }
+
     if (key && key.trim()) {
       const masked = key.length > 8 ? `${key.slice(0, 4)}...${key.slice(-4)}` : '••••••••';
       if (badge) {
@@ -201,10 +269,42 @@ function refreshPopupApiKeyUI() {
         badge.style.border = '1px solid rgba(239, 68, 68, 0.25)';
       }
       if (mask) mask.textContent = '';
-      if (input) input.placeholder = t('apiKeyDefaultPlaceholder');
+      if (input) input.placeholder = provInfo.placeholder || t('apiKeyDefaultPlaceholder');
       if (deleteBtn) deleteBtn.style.display = 'none';
     }
-  });
+  }
+
+  let called = false;
+  try {
+    chrome.runtime.sendMessage({ action: 'getAiConfig' }, (res) => {
+      called = true;
+      if (res && res.keys) {
+        renderWithConfig(res);
+      } else {
+        chrome.runtime.sendMessage({ action: 'getGeminiApiKey' }, (geminiRes) => {
+          renderWithConfig({
+            activeProvider: 'gemini',
+            keys: { gemini: geminiRes?.apiKey || null },
+            apiKey: geminiRes?.apiKey || null,
+          });
+        });
+      }
+    });
+  } catch (_) {}
+
+  if (!called) {
+    try {
+      chrome.runtime.sendMessage({ action: 'getGeminiApiKey' }, (geminiRes) => {
+        if (!called && geminiRes !== undefined) {
+          renderWithConfig({
+            activeProvider: 'gemini',
+            keys: { gemini: geminiRes?.apiKey || null },
+            apiKey: geminiRes?.apiKey || null,
+          });
+        }
+      });
+    } catch (_) {}
+  }
 }
 
 function renderTypePill(itemType) {
@@ -528,8 +628,29 @@ const popupSettings = document.getElementById('popup-settings');
 const popupKeyInput = document.getElementById('popup-api-key-input');
 const popupClearKeyBtn = document.getElementById('popup-clear-key-btn');
 const popupToggleEyeBtn = document.getElementById('popup-toggle-eye-btn');
+const popupPasteKeyBtn = document.getElementById('popup-paste-key-btn');
 const popupSaveKeyBtn = document.getElementById('popup-save-key-btn');
 const popupDeleteKeyBtn = document.getElementById('popup-delete-key-btn');
+const popupProviderTabs = document.querySelectorAll('.provider-tab');
+
+if (popupProviderTabs) {
+  popupProviderTabs.forEach((tab) => {
+    tab.addEventListener('click', () => {
+      const prov = tab.dataset.provider;
+      if (prov && AI_PROVIDERS[prov]) {
+        currentPopupProvider = prov;
+        chrome.runtime.sendMessage({ action: 'setAiProvider', provider: prov }, () => {
+          refreshPopupApiKeyUI(prov);
+          if (popupKeyInput) {
+            popupKeyInput.value = '';
+            if (popupClearKeyBtn) popupClearKeyBtn.style.display = 'none';
+            popupKeyInput.focus();
+          }
+        });
+      }
+    });
+  });
+}
 
 if (settingsToggleBtn && popupSettings) {
   settingsToggleBtn.addEventListener('click', () => {
@@ -582,23 +703,73 @@ if (popupToggleEyeBtn && popupKeyInput) {
   });
 }
 
+if (popupPasteKeyBtn && popupKeyInput) {
+  popupPasteKeyBtn.addEventListener('click', async () => {
+    try {
+      let text = '';
+      if (navigator.clipboard && navigator.clipboard.readText) {
+        text = await navigator.clipboard.readText();
+      }
+      if (!text || !text.trim()) {
+        const prov = AI_PROVIDERS[currentPopupProvider] || AI_PROVIDERS.gemini;
+        const msg = currentLang === 'vi'
+          ? `Dán ${prov.name} API Key của bạn vào đây:`
+          : `Paste your ${prov.name} API Key here:`;
+        text = window.prompt(msg);
+      }
+      if (text && text.trim()) {
+        popupKeyInput.value = text.trim();
+        if (popupClearKeyBtn) popupClearKeyBtn.style.display = 'flex';
+        showAlert('success', t('apiKeyPasted'));
+        popupKeyInput.focus();
+      }
+    } catch (_) {
+      const prov = AI_PROVIDERS[currentPopupProvider] || AI_PROVIDERS.gemini;
+      const msg = currentLang === 'vi'
+        ? `Dán ${prov.name} API Key của bạn vào đây:`
+        : `Paste your ${prov.name} API Key here:`;
+      const text = window.prompt(msg);
+      if (text && text.trim()) {
+        popupKeyInput.value = text.trim();
+        if (popupClearKeyBtn) popupClearKeyBtn.style.display = 'flex';
+        showAlert('success', t('apiKeyPasted'));
+        popupKeyInput.focus();
+      }
+    }
+  });
+}
+
 if (popupDeleteKeyBtn) {
   popupDeleteKeyBtn.addEventListener('click', () => {
-    chrome.runtime.sendMessage({ action: 'removeGeminiApiKey' }, () => {
+    const prov = currentPopupProvider || 'gemini';
+    chrome.runtime.sendMessage({ action: 'removeAiKey', provider: prov }, (res) => {
+      if (!res || !res.ok) {
+        // Fallback for legacy
+        chrome.runtime.sendMessage({ action: 'removeGeminiApiKey' }, () => {
+          afterDelete();
+        });
+        return;
+      }
+      afterDelete();
+    });
+
+    function afterDelete() {
       if (popupKeyInput) popupKeyInput.value = '';
       if (popupClearKeyBtn) popupClearKeyBtn.style.display = 'none';
       showAlert('warning', t('apiKeyDeleted'));
-      refreshPopupApiKeyUI();
-    });
+      refreshPopupApiKeyUI(prov);
+    }
   });
 }
 
 function handlePopupSaveKey() {
   if (!popupKeyInput) return;
   const key = popupKeyInput.value.trim();
+  const prov = currentPopupProvider || 'gemini';
   if (!key) {
-    chrome.runtime.sendMessage({ action: 'getGeminiApiKey' }, (res) => {
-      if (res?.apiKey) {
+    chrome.runtime.sendMessage({ action: 'getAiConfig' }, (res) => {
+      const existingKey = res?.keys?.[prov] || (prov === 'gemini' ? res?.apiKey : null);
+      if (existingKey) {
         showAlert('warning', t('apiKeyPromptPaste'));
       } else {
         showAlert('error', t('apiKeyEmptyErr'));
@@ -606,14 +777,24 @@ function handlePopupSaveKey() {
     });
     return;
   }
-  chrome.runtime.sendMessage({ action: 'setGeminiApiKey', key }, (res) => {
+  chrome.runtime.sendMessage({ action: 'setAiKey', provider: prov, key }, (res) => {
     if (res && res.ok) {
       popupKeyInput.value = '';
       if (popupClearKeyBtn) popupClearKeyBtn.style.display = 'none';
       showAlert('success', t('apiKeySaved'));
-      refreshPopupApiKeyUI();
+      refreshPopupApiKeyUI(prov);
     } else {
-      showAlert('error', t('unknownError'));
+      // Legacy fallback
+      chrome.runtime.sendMessage({ action: 'setGeminiApiKey', key }, (legacyRes) => {
+        if (legacyRes && legacyRes.ok) {
+          popupKeyInput.value = '';
+          if (popupClearKeyBtn) popupClearKeyBtn.style.display = 'none';
+          showAlert('success', t('apiKeySaved'));
+          refreshPopupApiKeyUI(prov);
+        } else {
+          showAlert('error', t('unknownError'));
+        }
+      });
     }
   });
 }

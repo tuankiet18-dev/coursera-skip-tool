@@ -14,7 +14,56 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return true;
   }
 
-  // Gemini API Key management
+  // Multi-Provider AI Configuration & Key Management
+  if (message.action === 'getAiConfig') {
+    chrome.storage.local.get(['aiProvider', 'geminiApiKey', 'openaiApiKey', 'groqApiKey'], (data) => {
+      sendResponse({
+        provider: data.aiProvider || 'gemini',
+        keys: {
+          gemini: data.geminiApiKey || null,
+          openai: data.openaiApiKey || null,
+          groq: data.groqApiKey || null,
+        },
+      });
+    });
+    return true;
+  }
+
+  if (message.action === 'setAiKey') {
+    const { provider, key } = message;
+    const prop = provider === 'openai' ? 'openaiApiKey' : (provider === 'groq' ? 'groqApiKey' : 'geminiApiKey');
+    if (!key || !key.trim()) {
+      chrome.storage.local.remove([prop], () => {
+        sendResponse({ ok: true });
+      });
+    } else {
+      chrome.storage.local.set({ [prop]: key.trim(), aiProvider: provider }, () => {
+        sendResponse({ ok: true });
+      });
+    }
+    return true;
+  }
+
+  if (message.action === 'setAiProvider') {
+    const { provider } = message;
+    if (provider) {
+      chrome.storage.local.set({ aiProvider: provider }, () => {
+        sendResponse({ ok: true });
+      });
+    }
+    return true;
+  }
+
+  if (message.action === 'removeAiKey') {
+    const { provider } = message;
+    const prop = provider === 'openai' ? 'openaiApiKey' : (provider === 'groq' ? 'groqApiKey' : 'geminiApiKey');
+    chrome.storage.local.remove([prop], () => {
+      sendResponse({ ok: true });
+    });
+    return true;
+  }
+
+  // Legacy Gemini Key Management for backward compatibility
   if (message.action === 'getGeminiApiKey') {
     chrome.storage.local.get(['geminiApiKey'], (data) => {
       sendResponse({ apiKey: data.geminiApiKey || null });
@@ -28,7 +77,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         sendResponse({ ok: true });
       });
     } else {
-      chrome.storage.local.set({ geminiApiKey: message.key }, () => {
+      chrome.storage.local.set({ geminiApiKey: message.key, aiProvider: 'gemini' }, () => {
         sendResponse({ ok: true });
       });
     }
@@ -42,73 +91,207 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return true;
   }
 
-  // Gemini API proxy — content script cannot call external APIs directly in MV3
+  // Unified AI Proxy: routes to Gemini, OpenAI, or Groq
+  if (message.action === 'callAiApi') {
+    const { provider = 'gemini', apiKey, prompt } = message;
+    if (!apiKey) {
+      sendResponse({ ok: false, error: 'No API key provided' });
+      return true;
+    }
+
+    if (provider === 'openai') {
+      callOpenAiProxy(apiKey, prompt).then(sendResponse);
+    } else if (provider === 'groq') {
+      callGroqProxy(apiKey, prompt).then(sendResponse);
+    } else {
+      callGeminiProxy(apiKey, prompt).then(sendResponse);
+    }
+    return true;
+  }
+
+  // Legacy Gemini API proxy
   if (message.action === 'callGeminiApi') {
     const { apiKey, prompt } = message;
     if (!apiKey) {
       sendResponse({ ok: false, error: 'No API key provided' });
       return true;
     }
-
-    const candidateModels = ['gemini-3.8-flash', 'gemini-2.5-flash', 'gemini-1.5-flash'];
-
-    async function tryCallGemini(modelIndex = 0, withThinkingConfig = true) {
-      if (modelIndex >= candidateModels.length) {
-        return { ok: false, error: 'Tất cả các model Gemini đều không khả dụng. Vui lòng kiểm tra lại API key.' };
-      }
-
-      const model = candidateModels[modelIndex];
-      const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
-
-      const generationConfig = {
-        temperature: 0.1,
-        maxOutputTokens: 8192,
-        responseMimeType: 'application/json',
-      };
-
-      // Disable thinking budget on Flash models to prevent latency & wasted token budget
-      if (withThinkingConfig && !model.includes('1.5')) {
-        generationConfig.thinkingConfig = {
-          thinkingBudget: 0,
-        };
-      }
-
-      try {
-        const r = await fetch(endpoint, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            contents: [{ parts: [{ text: prompt }] }],
-            generationConfig,
-          }),
-        });
-
-        // If model not found or deprecated (404), try next candidate model
-        if (r.status === 404 && modelIndex + 1 < candidateModels.length) {
-          return await tryCallGemini(modelIndex + 1, withThinkingConfig);
-        }
-
-        // If 400 Bad Request with thinkingConfig, retry without thinkingConfig
-        if (r.status === 400 && withThinkingConfig && generationConfig.thinkingConfig) {
-          return await tryCallGemini(modelIndex, false);
-        }
-
-        if (!r.ok) {
-          const t = await r.text();
-          return { ok: false, error: `HTTP ${r.status}: ${t.slice(0, 200)}` };
-        }
-
-        const data = await r.json();
-        return { ok: true, data };
-      } catch (err) {
-        if (modelIndex + 1 < candidateModels.length) {
-          return await tryCallGemini(modelIndex + 1, withThinkingConfig);
-        }
-        return { ok: false, error: err.message };
-      }
-    }
-
-    tryCallGemini().then(sendResponse);
-    return true; // keep message channel open for async response
+    callGeminiProxy(apiKey, prompt).then(sendResponse);
+    return true;
   }
 });
+
+// ==========================================
+// Provider API Proxies
+// ==========================================
+
+async function callGeminiProxy(apiKey, prompt) {
+  const candidateModels = ['gemini-3.8-flash', 'gemini-2.5-flash', 'gemini-1.5-flash'];
+
+  async function tryCallGemini(modelIndex = 0, withThinkingConfig = true) {
+    if (modelIndex >= candidateModels.length) {
+      return { ok: false, error: 'Tất cả các model Gemini đều không khả dụng. Vui lòng kiểm tra lại API key.' };
+    }
+
+    const model = candidateModels[modelIndex];
+    const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
+
+    const generationConfig = {
+      temperature: 0.1,
+      maxOutputTokens: 8192,
+      responseMimeType: 'application/json',
+    };
+
+    if (withThinkingConfig && !model.includes('1.5')) {
+      generationConfig.thinkingConfig = {
+        thinkingBudget: 0,
+      };
+    }
+
+    try {
+      const r = await fetch(endpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contents: [{ parts: [{ text: prompt }] }],
+          generationConfig,
+        }),
+      });
+
+      if (r.status === 404 && modelIndex + 1 < candidateModels.length) {
+        return await tryCallGemini(modelIndex + 1, withThinkingConfig);
+      }
+
+      if (r.status === 400 && withThinkingConfig && generationConfig.thinkingConfig) {
+        return await tryCallGemini(modelIndex, false);
+      }
+
+      if (!r.ok) {
+        const t = await r.text();
+        return { ok: false, error: `HTTP ${r.status}: ${t.slice(0, 200)}` };
+      }
+
+      const data = await r.json();
+      return { ok: true, data };
+    } catch (err) {
+      if (modelIndex + 1 < candidateModels.length) {
+        return await tryCallGemini(modelIndex + 1, withThinkingConfig);
+      }
+      return { ok: false, error: err.message };
+    }
+  }
+
+  return await tryCallGemini(0);
+}
+
+async function callOpenAiProxy(apiKey, prompt) {
+  const candidateModels = ['gpt-4o-mini', 'gpt-4o'];
+
+  async function tryCallOpenAi(modelIndex = 0) {
+    if (modelIndex >= candidateModels.length) {
+      return { ok: false, error: 'Không thể kết nối đến OpenAI API. Vui lòng kiểm tra lại API key.' };
+    }
+
+    const model = candidateModels[modelIndex];
+    const endpoint = 'https://api.openai.com/v1/chat/completions';
+
+    try {
+      const r = await fetch(endpoint, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${apiKey}`,
+        },
+        body: JSON.stringify({
+          model,
+          messages: [
+            {
+              role: 'system',
+              content: 'You are an AI assistant helping answer a graded online quiz. Return ONLY a valid JSON array of answers in this exact format: [{"q":1,"answers":[0]}]. Do not include markdown code block syntax. Do not include any explanations.',
+            },
+            { role: 'user', content: prompt }
+          ],
+          temperature: 0.1,
+        }),
+      });
+
+      if (r.status === 404 && modelIndex + 1 < candidateModels.length) {
+        return await tryCallOpenAi(modelIndex + 1);
+      }
+
+      if (!r.ok) {
+        const t = await r.text();
+        if (r.status === 401) return { ok: false, error: 'API Key OpenAI không hợp lệ hoặc hết hạn.' };
+        if (r.status === 429) return { ok: false, error: 'OpenAI rate limit hoặc hết quota tín dụng.' };
+        return { ok: false, error: `OpenAI HTTP ${r.status}: ${t.slice(0, 200)}` };
+      }
+
+      const data = await r.json();
+      const content = data?.choices?.[0]?.message?.content || '';
+      return { ok: true, data: { text: content, raw: data } };
+    } catch (err) {
+      if (modelIndex + 1 < candidateModels.length) {
+        return await tryCallOpenAi(modelIndex + 1);
+      }
+      return { ok: false, error: `OpenAI error: ${err.message}` };
+    }
+  }
+
+  return await tryCallOpenAi(0);
+}
+
+async function callGroqProxy(apiKey, prompt) {
+  const candidateModels = ['llama-3.3-70b-versatile', 'llama-3.1-8b-instant'];
+
+  async function tryCallGroq(modelIndex = 0) {
+    if (modelIndex >= candidateModels.length) {
+      return { ok: false, error: 'Không thể kết nối đến Groq API. Vui lòng kiểm tra lại API key.' };
+    }
+
+    const model = candidateModels[modelIndex];
+    const endpoint = 'https://api.groq.com/openai/v1/chat/completions';
+
+    try {
+      const r = await fetch(endpoint, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${apiKey}`,
+        },
+        body: JSON.stringify({
+          model,
+          messages: [
+            {
+              role: 'system',
+              content: 'You are an AI assistant helping answer a graded online quiz. Return ONLY a valid JSON array of answers in this exact format: [{"q":1,"answers":[0]}]. Do not include markdown code block syntax. Do not include any explanations.',
+            },
+            { role: 'user', content: prompt }
+          ],
+          temperature: 0.1,
+        }),
+      });
+
+      if (r.status === 404 && modelIndex + 1 < candidateModels.length) {
+        return await tryCallGroq(modelIndex + 1);
+      }
+
+      if (!r.ok) {
+        const t = await r.text();
+        if (r.status === 401) return { ok: false, error: 'API Key Groq không hợp lệ hoặc hết hạn.' };
+        if (r.status === 429) return { ok: false, error: 'Groq rate limit. Vui lòng thử lại sau vài giây.' };
+        return { ok: false, error: `Groq HTTP ${r.status}: ${t.slice(0, 200)}` };
+      }
+
+      const data = await r.json();
+      const content = data?.choices?.[0]?.message?.content || '';
+      return { ok: true, data: { text: content, raw: data } };
+    } catch (err) {
+      if (modelIndex + 1 < candidateModels.length) {
+        return await tryCallGroq(modelIndex + 1);
+      }
+      return { ok: false, error: `Groq error: ${err.message}` };
+    }
+  }
+
+  return await tryCallGroq(0);
+}

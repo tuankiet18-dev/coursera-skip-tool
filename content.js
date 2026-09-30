@@ -1462,9 +1462,15 @@ function extractQuizQuestions() {
       let label = '';
       if (labelEl) {
         // Remove the input itself from text extraction
-        const clone = labelEl.cloneNode(true);
-        clone.querySelectorAll('input').forEach((e) => e.remove());
-        label = clone.innerText.trim();
+        try {
+          const clone = labelEl.cloneNode ? labelEl.cloneNode(true) : labelEl;
+          if (clone && clone.querySelectorAll) {
+            clone.querySelectorAll('input').forEach((e) => e.remove && e.remove());
+          }
+          label = (clone?.innerText || clone?.textContent || '').trim();
+        } catch (_) {
+          label = (labelEl.innerText || labelEl.textContent || '').trim();
+        }
       }
       if (!label) label = inp.value || `Option ${inputs.indexOf(inp)}`;
       return { label, element: inp };
@@ -1507,17 +1513,32 @@ function buildGeminiPrompt(questions) {
 }
 
 /**
- * Call Gemini via background service worker proxy, with retry on parse failure.
+ * Call AI (Gemini, OpenAI, or Groq) via background service worker proxy, with retry on parse failure.
  */
-async function callGeminiWithRetry(apiKey, prompt, maxRetry = 2) {
+async function callAiWithRetry(provider, apiKey, prompt, maxRetry = 2) {
   for (let attempt = 0; attempt <= maxRetry; attempt++) {
     let response;
     try {
       response = await new Promise((resolve, reject) => {
-        chrome.runtime.sendMessage({ action: 'callGeminiApi', apiKey, prompt }, (res) => {
-          if (chrome.runtime.lastError) return reject(new Error(chrome.runtime.lastError.message));
-          resolve(res);
-        });
+        let responded = false;
+        try {
+          chrome.runtime.sendMessage({ action: 'callAiApi', provider, apiKey, prompt }, (res) => {
+            responded = true;
+            if (chrome.runtime.lastError) return reject(new Error(chrome.runtime.lastError.message));
+            resolve(res);
+          });
+        } catch (_) {}
+
+        if (!responded && provider === 'gemini') {
+          try {
+            chrome.runtime.sendMessage({ action: 'callGeminiApi', apiKey, prompt }, (legacyRes) => {
+              if (legacyRes !== undefined) {
+                responded = true;
+                resolve(legacyRes);
+              }
+            });
+          } catch (_) {}
+        }
       });
     } catch (e) {
       if (attempt === maxRetry) throw e;
@@ -1526,23 +1547,26 @@ async function callGeminiWithRetry(apiKey, prompt, maxRetry = 2) {
     }
 
     if (!response || !response.ok) {
-      const errMsg = response?.error || 'Unknown error from Gemini API';
+      const errMsg = response?.error || `Unknown error from ${provider} API`;
       if (attempt === maxRetry) throw new Error(errMsg);
       await sleep(1500);
       continue;
     }
 
-    // Extract text from Gemini response structure
-    const candidate = response.data?.candidates?.[0];
-    const parts = candidate?.content?.parts || [];
+    // Extract text from AI response structure
+    let rawText = '';
+    if (typeof response.data?.text === 'string') {
+      rawText = response.data.text;
+    } else {
+      const candidate = response.data?.candidates?.[0];
+      const parts = candidate?.content?.parts || [];
+      const answerParts = parts.filter((p) => !p.thought && typeof p.text === 'string');
+      rawText = answerParts.length > 0
+        ? answerParts.map((p) => p.text).join('')
+        : (parts[0]?.text || '');
+    }
 
-    // Filter out thought parts: Gemini 2.5/3.x thinking models return thought: true in parts[0]
-    const answerParts = parts.filter((p) => !p.thought && typeof p.text === 'string');
-    const rawText = answerParts.length > 0
-      ? answerParts.map((p) => p.text).join('')
-      : (parts[0]?.text || '');
-
-    console.log('[CourseraSkip] Gemini raw answer response:', rawText.slice(0, 500));
+    console.log(`[CourseraSkip] ${provider} raw answer response:`, rawText.slice(0, 500));
 
     let parsed = null;
     const trimmed = rawText.trim();
@@ -1587,10 +1611,15 @@ async function callGeminiWithRetry(apiKey, prompt, maxRetry = 2) {
 
     console.log(`[CourseraSkip] JSON parse attempt ${attempt + 1} failed | raw:`, rawText.slice(0, 200));
     if (attempt === maxRetry) {
-      throw new Error(`Gemini trả về định dạng không hợp lệ: không thể trích xuất danh sách đáp án JSON.`);
+      throw new Error(`${provider.toUpperCase()} trả về định dạng không hợp lệ: không thể trích xuất danh sách đáp án JSON.`);
     }
     await sleep(1000);
   }
+}
+
+// Backward compatible alias
+async function callGeminiWithRetry(apiKey, prompt, maxRetry = 2) {
+  return callAiWithRetry('gemini', apiKey, prompt, maxRetry);
 }
 
 /**
@@ -1680,24 +1709,79 @@ async function autoAnswerGradedQuiz() {
     return { success: false, error: 'Không phải trang Graded Quiz. Hãy mở trang làm bài quiz.' };
   }
 
-  // 1. Get API key
-  let apiKey = null;
+  // 1. Get AI config
+  let aiConfig = null;
   try {
-    const keyRes = await new Promise((resolve, reject) => {
-      chrome.runtime.sendMessage({ action: 'getGeminiApiKey' }, (res) => {
-        if (chrome.runtime.lastError) return reject(new Error(chrome.runtime.lastError.message));
-        resolve(res);
-      });
+    aiConfig = await new Promise((resolve) => {
+      let resolved = false;
+      const finish = (val) => {
+        if (!resolved) {
+          resolved = true;
+          resolve(val);
+        }
+      };
+
+      try {
+        chrome.runtime.sendMessage({ action: 'getAiConfig' }, (res) => {
+          if (res && res.keys) {
+            finish(res);
+          } else {
+            chrome.runtime.sendMessage({ action: 'getGeminiApiKey' }, (legacyRes) => {
+              finish({
+                provider: 'gemini',
+                keys: { gemini: legacyRes?.apiKey || null },
+                apiKey: legacyRes?.apiKey || null,
+              });
+            });
+          }
+        });
+      } catch (_) {}
+
+      // If mock didn't handle getAiConfig synchronously, try getGeminiApiKey
+      if (!resolved) {
+        try {
+          chrome.runtime.sendMessage({ action: 'getGeminiApiKey' }, (legacyRes) => {
+            if (legacyRes !== undefined) {
+              finish({
+                provider: 'gemini',
+                keys: { gemini: legacyRes?.apiKey || null },
+                apiKey: legacyRes?.apiKey || null,
+              });
+            }
+          });
+        } catch (_) {}
+      }
+
+      // Safety timeout in case neither responds
+      setTimeout(() => {
+        if (!resolved) {
+          finish(null);
+        }
+      }, 500);
     });
-    apiKey = keyRes?.apiKey || null;
   } catch (e) {
     return { success: false, error: 'Không thể kết nối với extension background. Thử reload trang.' };
   }
 
+  let activeProvider = aiConfig?.provider || 'gemini';
+  let apiKey = aiConfig?.keys?.[activeProvider] || null;
+
+  // Auto-switch to any configured provider if active provider key is empty
+  if (!apiKey || !apiKey.trim()) {
+    const keys = aiConfig?.keys || {};
+    const available = Object.keys(keys).find((p) => keys[p] && keys[p].trim());
+    if (available) {
+      activeProvider = available;
+      apiKey = keys[available];
+      chrome.runtime.sendMessage({ action: 'setAiProvider', provider: activeProvider });
+    }
+  }
+
   if (!apiKey || apiKey.trim() === '') {
+    const provName = AI_PROVIDERS[activeProvider]?.name || activeProvider.toUpperCase();
     return {
       success: false,
-      error: 'Chưa nhập Gemini API Key. Bấm ⚙️ trong widget để nhập key miễn phí từ Google AI Studio.'
+      error: `Chưa nhập API Key cho ${provName}. Bấm ⚙️ trong widget để nhập key (Gemini, GPT hoặc Groq).`
     };
   }
 
@@ -1710,19 +1794,20 @@ async function autoAnswerGradedQuiz() {
     };
   }
 
-  console.log(`[CourseraSkip] Sending ${questions.length} questions to Gemini...`);
+  const provDisplayName = AI_PROVIDERS[activeProvider]?.name || activeProvider.toUpperCase();
+  console.log(`[CourseraSkip] Sending ${questions.length} questions to ${provDisplayName}...`);
 
-  // 3. Build prompt and call Gemini
+  // 3. Build prompt and call AI
   const prompt = buildGeminiPrompt(questions);
   let answersFromAI;
   try {
-    answersFromAI = await callGeminiWithRetry(apiKey, prompt);
+    answersFromAI = await callAiWithRetry(activeProvider, apiKey, prompt);
   } catch (e) {
-    return { success: false, error: `Lỗi Gemini API: ${e.message}` };
+    return { success: false, error: `Lỗi ${provDisplayName} API: ${e.message}` };
   }
 
   if (!answersFromAI || answersFromAI.length === 0) {
-    return { success: false, error: 'Gemini không trả về đáp án. Thử lại.' };
+    return { success: false, error: `${provDisplayName} không trả về đáp án. Thử lại.` };
   }
 
   // 4. Fill answers into DOM
@@ -1735,7 +1820,7 @@ async function autoAnswerGradedQuiz() {
   return {
     success: true,
     submitted: false, // never auto-submit
-    message: `✅ AI đã điền ${filled} lựa chọn cho ${questions.length} câu hỏi. ${submitNote}`,
+    message: `✅ AI (${provDisplayName}) đã điền ${filled} lựa chọn cho ${questions.length} câu hỏi. ${submitNote}`,
     filled,
     totalQuestions: questions.length,
   };
@@ -1743,6 +1828,45 @@ async function autoAnswerGradedQuiz() {
 
 // =========================================================================
 // ===== IN-PAGE FLOATING WIDGET (Giao diện cố định trên trang Coursera) =====
+// =========================================================================
+
+const AI_PROVIDERS = {
+  gemini: {
+    id: 'gemini',
+    name: 'Gemini',
+    icon: '♊',
+    placeholder: 'AIzaSy...',
+    labelVi: 'Gemini API Key',
+    labelEn: 'Gemini API Key',
+    hintVi: 'Lấy key miễn phí tại Google AI Studio (aistudio.google.com)',
+    hintEn: 'Get a free key at Google AI Studio (aistudio.google.com)',
+    url: 'https://aistudio.google.com',
+  },
+  openai: {
+    id: 'openai',
+    name: 'OpenAI (GPT)',
+    icon: '🟢',
+    placeholder: 'sk-proj-... / sk-...',
+    labelVi: 'OpenAI (GPT) API Key',
+    labelEn: 'OpenAI (GPT) API Key',
+    hintVi: 'Lấy key tại OpenAI Platform (platform.openai.com)',
+    hintEn: 'Get your key at OpenAI Platform (platform.openai.com)',
+    url: 'https://platform.openai.com/api-keys',
+  },
+  groq: {
+    id: 'groq',
+    name: 'Groq',
+    icon: '⚡',
+    placeholder: 'gsk_...',
+    labelVi: 'Groq API Key',
+    labelEn: 'Groq API Key',
+    hintVi: 'Lấy key siêu tốc, miễn phí tại GroqCloud (console.groq.com)',
+    hintEn: 'Get a free, ultra-fast key at GroqCloud (console.groq.com)',
+    url: 'https://console.groq.com/keys',
+  },
+};
+
+let currentWidgetProvider = 'gemini';
 // =========================================================================
 
 const WIDGET_I18N = {
@@ -1759,7 +1883,7 @@ const WIDGET_I18N = {
     processingCurrent: 'Đang xử lý...',
     processingBulk: 'Đang khởi động...',
     rateToastMsg: 'Tiết kiệm thời gian? Đánh giá 5★ trên Cửa hàng nhé!',
-    settingsTitle: 'Cài đặt AI (Gemini)',
+    settingsTitle: 'Cài đặt AI (Gemini / GPT / Groq)',
     apiKeyLabel: 'Gemini API Key',
     apiKeySave: 'Lưu',
     apiKeySaved: '✅ Đã lưu API key thành công!',
@@ -1791,7 +1915,7 @@ const WIDGET_I18N = {
     processingCurrent: 'Completing...',
     processingBulk: 'Starting...',
     rateToastMsg: 'Saved your time? Rate 5★ on Chrome Web Store!',
-    settingsTitle: 'AI Settings (Gemini)',
+    settingsTitle: 'AI Settings (Gemini / GPT / Groq)',
     apiKeyLabel: 'Gemini API Key',
     apiKeySave: 'Save',
     apiKeySaved: '✅ API key saved successfully!',
@@ -1997,9 +2121,42 @@ function refreshWidgetApiKeyUI() {
   const deleteKeyBtn = targetShadow.getElementById('cs-delete-key-btn');
   const keyStatusBadge = targetShadow.getElementById('cs-key-status-badge');
   const keyMaskPreview = targetShadow.getElementById('cs-key-mask-preview');
+  const apiKeyLabel = targetShadow.getElementById('cs-api-key-label');
+  const apiKeyHint = targetShadow.getElementById('cs-api-key-hint');
+  const settingsTitle = targetShadow.getElementById('cs-settings-title');
+  const tabs = targetShadow.querySelectorAll ? targetShadow.querySelectorAll('.cs-provider-tab') : [];
 
-  chrome.runtime.sendMessage({ action: 'getGeminiApiKey' }, (res) => {
-    const key = res?.apiKey || null;
+  function applyConfig(cfg) {
+    const activeProvider = cfg?.provider || 'gemini';
+    const keys = cfg?.keys || {};
+
+    if (!currentWidgetProvider) {
+      currentWidgetProvider = activeProvider;
+    }
+
+    if (tabs && tabs.forEach) {
+      tabs.forEach((tab) => {
+        if (tab.dataset && tab.dataset.provider === currentWidgetProvider) {
+          tab.className = 'cs-provider-tab active';
+        } else if (tab.classList) {
+          tab.className = 'cs-provider-tab';
+        }
+      });
+    }
+
+    const provInfo = AI_PROVIDERS[currentWidgetProvider] || AI_PROVIDERS.gemini;
+    const key = keys[currentWidgetProvider] || (currentWidgetProvider === 'gemini' ? (cfg?.apiKey || null) : null);
+
+    if (settingsTitle) {
+      settingsTitle.textContent = `⚙️ ${wt('settingsTitle')}`;
+    }
+    if (apiKeyLabel) {
+      apiKeyLabel.textContent = currentWidgetLang === 'vi' ? provInfo.labelVi : provInfo.labelEn;
+    }
+    if (apiKeyHint) {
+      apiKeyHint.textContent = currentWidgetLang === 'vi' ? provInfo.hintVi : provInfo.hintEn;
+    }
+
     if (key && key.trim()) {
       const masked = key.length > 8 ? `${key.slice(0, 4)}...${key.slice(-4)}` : '••••••••';
       if (keyStatusBadge) {
@@ -2025,13 +2182,46 @@ function refreshWidgetApiKeyUI() {
         keyMaskPreview.textContent = '';
       }
       if (apiKeyInput) {
-        apiKeyInput.placeholder = wt('apiKeyDefaultPlaceholder');
+        apiKeyInput.placeholder = `${provInfo.placeholder}`;
       }
       if (deleteKeyBtn) {
         deleteKeyBtn.style.display = 'none';
       }
     }
-  });
+  }
+
+  let called = false;
+  try {
+    chrome.runtime.sendMessage({ action: 'getAiConfig' }, (res) => {
+      called = true;
+      if (res && res.keys) {
+        applyConfig(res);
+      } else {
+        // Fallback for mock in test environment
+        chrome.runtime.sendMessage({ action: 'getGeminiApiKey' }, (geminiRes) => {
+          applyConfig({
+            provider: 'gemini',
+            keys: { gemini: geminiRes?.apiKey || null },
+            apiKey: geminiRes?.apiKey || null,
+          });
+        });
+      }
+    });
+  } catch (_) {}
+
+  if (!called) {
+    try {
+      chrome.runtime.sendMessage({ action: 'getGeminiApiKey' }, (geminiRes) => {
+        if (!called && geminiRes !== undefined) {
+          applyConfig({
+            provider: 'gemini',
+            keys: { gemini: geminiRes?.apiKey || null },
+            apiKey: geminiRes?.apiKey || null,
+          });
+        }
+      });
+    } catch (_) {}
+  }
 }
 
 function initFloatingWidget() {
@@ -2422,6 +2612,41 @@ function initFloatingWidget() {
       color: #a5b4fc;
       letter-spacing: 0.03em;
     }
+    .cs-provider-tabs {
+      display: flex;
+      gap: 4px;
+      background: rgba(30, 41, 59, 0.7);
+      padding: 3px;
+      border-radius: 8px;
+      border: 1px solid rgba(255, 255, 255, 0.08);
+    }
+    .cs-provider-tab {
+      flex: 1;
+      padding: 5px 4px;
+      background: transparent;
+      border: 1px solid transparent;
+      border-radius: 6px;
+      color: #94a3b8;
+      font-size: 10px;
+      font-weight: 600;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 3px;
+      transition: all 0.2s;
+      white-space: nowrap;
+    }
+    .cs-provider-tab:hover {
+      color: #f1f5f9;
+      background: rgba(255, 255, 255, 0.05);
+    }
+    .cs-provider-tab.active {
+      background: rgba(99, 102, 241, 0.25);
+      border-color: rgba(99, 102, 241, 0.5);
+      color: #fff;
+      box-shadow: 0 2px 6px rgba(0, 0, 0, 0.25);
+    }
     .cs-key-status-badge {
       font-size: 10px;
       padding: 2px 7px;
@@ -2675,9 +2900,17 @@ function initFloatingWidget() {
         <!-- Settings Panel (hidden by default) -->
         <div class="cs-settings" id="cs-settings" style="display: none;">
           <div class="cs-settings-header">
-            <span class="cs-settings-title" id="cs-settings-title">⚙️ Cài đặt AI (Gemini)</span>
+            <span class="cs-settings-title" id="cs-settings-title">⚙️ Cài đặt AI (Gemini / GPT / Groq)</span>
             <span class="cs-key-status-badge empty" id="cs-key-status-badge">○ Chưa có key</span>
           </div>
+
+          <!-- Provider Tabs -->
+          <div class="cs-provider-tabs" id="cs-provider-tabs">
+            <button type="button" class="cs-provider-tab active" data-provider="gemini">♊ Gemini</button>
+            <button type="button" class="cs-provider-tab" data-provider="openai">🟢 OpenAI</button>
+            <button type="button" class="cs-provider-tab" data-provider="groq">⚡ Groq</button>
+          </div>
+
           <div class="cs-input-group">
             <div class="cs-input-label-row">
               <label class="cs-input-label" id="cs-api-key-label">Gemini API Key</label>
@@ -2842,7 +3075,8 @@ function initFloatingWidget() {
       } catch (_) {}
 
       if (!pastedText || !pastedText.trim()) {
-        pastedText = window.prompt(wt('apiKeyPromptInput') || 'Gemini API Key:', '') || '';
+        const provName = AI_PROVIDERS[currentWidgetProvider]?.name || 'AI';
+        pastedText = window.prompt(wt('apiKeyPromptInput') || `${provName} API Key:`, '') || '';
       }
 
       pastedText = pastedText.trim();
@@ -2854,6 +3088,24 @@ function initFloatingWidget() {
       }
     });
   }
+
+  // Provider tabs switching
+  const providerTabs = widgetShadow.querySelectorAll('.cs-provider-tab');
+  providerTabs.forEach((tab) => {
+    tab.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const p = tab.dataset.provider;
+      if (p && p !== currentWidgetProvider) {
+        currentWidgetProvider = p;
+        chrome.runtime.sendMessage({ action: 'setAiProvider', provider: p });
+        if (apiKeyInput) {
+          apiKeyInput.value = '';
+          if (clearInputBtn) clearInputBtn.style.display = 'none';
+        }
+        refreshWidgetApiKeyUI();
+      }
+    });
+  });
 
   // Clear input button
   if (clearInputBtn && apiKeyInput) {
@@ -2883,10 +3135,12 @@ function initFloatingWidget() {
   if (deleteKeyBtn) {
     deleteKeyBtn.addEventListener('click', (e) => {
       e.stopPropagation();
-      chrome.runtime.sendMessage({ action: 'removeGeminiApiKey' }, (res) => {
+      const provider = currentWidgetProvider || 'gemini';
+      const provName = AI_PROVIDERS[provider]?.name || provider;
+      chrome.runtime.sendMessage({ action: 'removeAiKey', provider }, (res) => {
         if (apiKeyInput) apiKeyInput.value = '';
         if (clearInputBtn) clearInputBtn.style.display = 'none';
-        showWidgetAlert('warning', wt('apiKeyDeleted'));
+        showWidgetAlert('warning', `🗑️ ${wt('apiKeyDeleted')} (${provName})`);
         refreshWidgetApiKeyUI();
       });
     });
@@ -2896,9 +3150,13 @@ function initFloatingWidget() {
   function handleSaveApiKey() {
     if (!apiKeyInput) return;
     const key = apiKeyInput.value.trim();
+    const provider = currentWidgetProvider || 'gemini';
+    const provName = AI_PROVIDERS[provider]?.name || provider;
+
     if (!key) {
-      chrome.runtime.sendMessage({ action: 'getGeminiApiKey' }, (res) => {
-        if (res?.apiKey) {
+      chrome.runtime.sendMessage({ action: 'getAiConfig' }, (res) => {
+        const existingKey = res?.keys?.[provider];
+        if (existingKey) {
           showWidgetAlert('warning', wt('apiKeyPromptPaste'));
         } else {
           showWidgetAlert('error', wt('apiKeyEmptyErr'));
@@ -2906,11 +3164,12 @@ function initFloatingWidget() {
       });
       return;
     }
-    chrome.runtime.sendMessage({ action: 'setGeminiApiKey', key }, (res) => {
+
+    chrome.runtime.sendMessage({ action: 'setAiKey', provider, key }, (res) => {
       if (res && res.ok) {
         apiKeyInput.value = '';
         if (clearInputBtn) clearInputBtn.style.display = 'none';
-        showWidgetAlert('success', wt('apiKeySaved'));
+        showWidgetAlert('success', `✅ ${wt('apiKeySaved')} (${provName})`);
         refreshWidgetApiKeyUI();
       } else {
         showWidgetAlert('error', 'Không thể lưu API key. Thử lại.');
