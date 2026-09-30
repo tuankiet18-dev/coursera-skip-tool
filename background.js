@@ -185,7 +185,7 @@ async function callGeminiProxy(apiKey, prompt) {
 }
 
 async function callOpenAiProxy(apiKey, prompt) {
-  const candidateModels = ['gpt-4o-mini', 'gpt-4o'];
+  const candidateModels = ['gpt-4o-mini', 'gpt-4o', 'gpt-3.5-turbo'];
 
   async function tryCallOpenAi(modelIndex = 0) {
     if (modelIndex >= candidateModels.length) {
@@ -240,12 +240,79 @@ async function callOpenAiProxy(apiKey, prompt) {
   return await tryCallOpenAi(0);
 }
 
+async function getGroqCandidateModels(apiKey) {
+  const fallbackModels = [
+    'openai/gpt-oss-120b',
+    'openai/gpt-oss-20b',
+    'qwen/qwen3.8-27b',
+    'llama-3.3-70b-versatile',
+    'llama-3.1-8b-instant',
+    'llama3-70b-8192',
+    'llama3-8b-8192',
+    'mixtral-8x7b-32768',
+    'gemma2-9b-it',
+  ];
+
+  try {
+    const r = await fetch('https://api.groq.com/openai/v1/models', {
+      method: 'GET',
+      headers: {
+        'Authorization': `Bearer ${apiKey}`,
+      },
+    });
+
+    if (!r.ok) return fallbackModels;
+
+    const data = await r.json();
+    const rawList = Array.isArray(data?.data) ? data.data : [];
+
+    // Filter out non-chat models (audio, guard, embeddings, vision only, etc.)
+    const isExcluded = (id) =>
+      /whisper|guard|prompt-guard|orpheus|embed|rerank|tts|audio/i.test(id);
+
+    const availableIds = rawList
+      .map((m) => m?.id)
+      .filter((id) => typeof id === 'string' && id && !isExcluded(id));
+
+    if (availableIds.length === 0) return fallbackModels;
+
+    // Sort by priority/capability
+    const priority = [
+      'openai/gpt-oss-120b',
+      'openai/gpt-oss-20b',
+      'qwen/qwen3.8-27b',
+      'llama-3.3-70b-versatile',
+      'llama-3.1-8b-instant',
+      'llama3-70b-8192',
+      'mixtral-8x7b-32768',
+      'llama3-8b-8192',
+      'gemma2-9b-it',
+    ];
+
+    availableIds.sort((a, b) => {
+      const idxA = priority.indexOf(a);
+      const idxB = priority.indexOf(b);
+      if (idxA !== -1 && idxB !== -1) return idxA - idxB;
+      if (idxA !== -1) return -1;
+      if (idxB !== -1) return 1;
+      return 0;
+    });
+
+    return availableIds;
+  } catch (_) {
+    return fallbackModels;
+  }
+}
+
 async function callGroqProxy(apiKey, prompt) {
-  const candidateModels = ['llama-3.3-70b-versatile', 'llama-3.1-8b-instant'];
+  const candidateModels = await getGroqCandidateModels(apiKey);
 
   async function tryCallGroq(modelIndex = 0) {
     if (modelIndex >= candidateModels.length) {
-      return { ok: false, error: 'Không thể kết nối đến Groq API. Vui lòng kiểm tra lại API key.' };
+      return {
+        ok: false,
+        error: 'Không tìm thấy model khả dụng trên Groq cho tài khoản này. Vui lòng kiểm tra Model Permissions trên console.groq.com hoặc dùng Gemini / OpenAI.',
+      };
     }
 
     const model = candidateModels[modelIndex];
@@ -271,7 +338,8 @@ async function callGroqProxy(apiKey, prompt) {
         }),
       });
 
-      if (r.status === 404 && modelIndex + 1 < candidateModels.length) {
+      if ((r.status === 404 || r.status === 400) && modelIndex + 1 < candidateModels.length) {
+        // Model not found or deprecated, try next model in candidate list
         return await tryCallGroq(modelIndex + 1);
       }
 
@@ -279,12 +347,21 @@ async function callGroqProxy(apiKey, prompt) {
         const t = await r.text();
         if (r.status === 401) return { ok: false, error: 'API Key Groq không hợp lệ hoặc hết hạn.' };
         if (r.status === 429) return { ok: false, error: 'Groq rate limit. Vui lòng thử lại sau vài giây.' };
+        if (r.status === 404) {
+          if (modelIndex + 1 < candidateModels.length) {
+            return await tryCallGroq(modelIndex + 1);
+          }
+          return {
+            ok: false,
+            error: `Model Groq (${model}) không khả dụng hoặc tài khoản chưa được cấp quyền trên console.groq.com.`,
+          };
+        }
         return { ok: false, error: `Groq HTTP ${r.status}: ${t.slice(0, 200)}` };
       }
 
       const data = await r.json();
       const content = data?.choices?.[0]?.message?.content || '';
-      return { ok: true, data: { text: content, raw: data } };
+      return { ok: true, data: { text: content, raw: data, model } };
     } catch (err) {
       if (modelIndex + 1 < candidateModels.length) {
         return await tryCallGroq(modelIndex + 1);
