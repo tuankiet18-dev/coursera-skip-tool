@@ -109,21 +109,6 @@ class Node {
     this.textContent = String(val);
   }
 
-  get innerHTML() {
-    return this._innerHTML || this.textContent || '';
-  }
-
-  set innerHTML(val) {
-    this._innerHTML = String(val);
-    this.textContent = String(val).replace(/<[^>]*>/g, '');
-    const idMatches = String(val).matchAll(/id=["\x27]([^"\x27]+)["\x27]/g);
-    for (const match of idMatches) {
-      const el = new HTMLElement();
-      el.id = match[1];
-      this.appendChild(el);
-    }
-  }
-
   contains(other) {
     if (!other) return false;
     let curr = other;
@@ -152,8 +137,7 @@ class Node {
       return this.tagName === 'LABEL' && this.attributes['for'] === targetId;
     }
     if (sel.startsWith('.')) {
-      const cls = sel.slice(1);
-      return this.classList.contains(cls) || (this.className && this.className.split(/\s+/).includes(cls));
+      return this.classList.contains(sel.slice(1));
     }
     if (sel.startsWith('fieldset')) {
       if (this.tagName !== 'FIELDSET') return false;
@@ -250,22 +234,8 @@ class HTMLElement extends Node {
     this.shadowRoot = new Document();
     return this.shadowRoot;
   }
-  addEventListener(type, fn) {
-    this._listeners = this._listeners || {};
-    this._listeners[type] = this._listeners[type] || [];
-    this._listeners[type].push(fn);
-  }
-  removeEventListener(type, fn) {
-    if (this._listeners && this._listeners[type]) {
-      this._listeners[type] = this._listeners[type].filter(f => f !== fn);
-    }
-  }
-  click() {
-    if (this._listeners && this._listeners['click']) {
-      const evt = { preventDefault() {}, stopPropagation() {} };
-      this._listeners['click'].forEach(fn => fn(evt));
-    }
-  }
+  addEventListener(type, fn) {}
+  removeEventListener(type, fn) {}
   getBoundingClientRect() { return { left: 100, top: 100 }; }
 }
 
@@ -1361,74 +1331,6 @@ async function runTests() {
     assert.strictEqual(currentProvider, 'groq', 'Provider should have automatically switched to Groq');
 
     console.log('  -> PASS: autoAnswerGradedQuiz() auto-switched to Groq and answered quiz\n');
-    passedCount++;
-  }
-
-  // TC-27: injectQuizletButtonsToQuestions() injects 1-click Quizlet search buttons
-  {
-    totalCount++;
-    console.log('TC-27: injectQuizletButtonsToQuestions() injects 1-click Quizlet search buttons...');
-    const sb = createSandbox('https://www.coursera.org/learn/my-course/assignment-submission/test/quiz/attempt');
-
-    let openedUrl = null;
-    sb.window.open = (url) => { openedUrl = url; };
-
-    const container = new HTMLElement('DIV');
-    const p = new HTMLElement('P');
-    p.textContent = 'Question 1: Which of the following elements constitute PII? (Select two.)';
-    container.appendChild(p);
-    sb.document.body.appendChild(container);
-
-    const questions = [
-      {
-        index: 0,
-        questionText: p.textContent,
-        type: 'multi',
-        options: [{ label: 'Telephone numbers' }],
-        container,
-        targetEl: p,
-      }
-    ];
-
-    sb.questions = questions;
-    vm.runInContext('injectQuizletButtonsToQuestions(questions)', sb);
-
-    const btn = container.querySelector('.cs-quizlet-btn');
-    assert.ok(btn, 'Button .cs-quizlet-btn must be injected');
-    assert.ok(btn.textContent.includes('Quizlet'), 'Button text must include Quizlet');
-
-    // Simulate click
-    btn.click();
-    assert.ok(openedUrl, 'window.open must be called on click');
-    assert.ok(openedUrl.includes('site%3Aquizlet.com') || openedUrl.includes('site:quizlet.com'), 'URL must target Quizlet');
-    assert.ok(openedUrl.includes('Which%20of%20the%20following%20elements%20constitute%20PII'), 'Query must contain cleaned question text');
-    assert.ok(!openedUrl.includes('Select%20two'), 'Query must strip (Select two.)');
-
-    console.log('  -> PASS: injectQuizletButtonsToQuestions() correctly injects button and formats search URL\n');
-    passedCount++;
-  }
-
-  // TC-28: buildGeminiPrompt() incorporates custom study / Quizlet notes
-  {
-    totalCount++;
-    console.log('TC-28: buildGeminiPrompt() incorporates custom study / Quizlet notes...');
-    const sb = createSandbox('https://www.coursera.org/learn/my-course/assignment-submission/test/quiz/attempt');
-
-    const questions = [
-      { index: 0, questionText: 'What is a marketing persona?', type: 'single', options: [{ label: 'A marketer' }, { label: 'A demographic archetype' }] }
-    ];
-    const customNotes = 'Marketing persona: A demographic archetype describing customer segments.';
-
-    sb.questions = questions;
-    sb.customNotes = customNotes;
-
-    const promptWithNotes = vm.runInContext('buildGeminiPrompt(questions, customNotes)', sb);
-    assert.ok(promptWithNotes.includes('=== REFERENCE MATERIAL (QUIZLET / COURSE FLASHCARDS) ==='), 'Must include reference material header');
-    assert.ok(promptWithNotes.includes(customNotes), 'Must include exact custom notes');
-    assert.ok(promptWithNotes.includes('PRIORITY INSTRUCTION'), 'Must include priority instruction');
-    assert.ok(promptWithNotes.includes('Return ONLY the JSON array'), 'Must include JSON output instruction');
-
-    console.log('  -> PASS: buildGeminiPrompt() successfully embeds custom notes and reference priority\n');
     passedCount++;
   }
 

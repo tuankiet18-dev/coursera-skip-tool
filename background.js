@@ -16,7 +16,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
   // Multi-Provider AI Configuration & Key Management
   if (message.action === 'getAiConfig') {
-    chrome.storage.local.get(['aiProvider', 'geminiApiKey', 'openaiApiKey', 'groqApiKey', 'quizletContext'], (data) => {
+    chrome.storage.local.get(['aiProvider', 'geminiApiKey', 'openaiApiKey', 'groqApiKey'], (data) => {
       sendResponse({
         provider: data.aiProvider || 'gemini',
         keys: {
@@ -24,23 +24,8 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           openai: data.openaiApiKey || null,
           groq: data.groqApiKey || null,
         },
-        quizletContext: data.quizletContext || '',
       });
     });
-    return true;
-  }
-
-  if (message.action === 'setQuizletContext') {
-    const { context } = message;
-    if (!context || !context.trim()) {
-      chrome.storage.local.remove(['quizletContext'], () => {
-        sendResponse({ ok: true });
-      });
-    } else {
-      chrome.storage.local.set({ quizletContext: context.trim() }, () => {
-        sendResponse({ ok: true });
-      });
-    }
     return true;
   }
 
@@ -157,8 +142,11 @@ async function callGeminiProxy(apiKey, prompt) {
       responseMimeType: 'application/json',
     };
 
-    // Note: We avoid forcing thinkingBudget: 0 so thinking models (e.g. Gemini 2.5) can reason
-    // through complex distractors and tricky multiple-choice options.
+    if (withThinkingConfig && !model.includes('1.5')) {
+      generationConfig.thinkingConfig = {
+        thinkingBudget: 0,
+      };
+    }
 
     try {
       const r = await fetch(endpoint, {
@@ -174,7 +162,7 @@ async function callGeminiProxy(apiKey, prompt) {
         return await tryCallGemini(modelIndex + 1, withThinkingConfig);
       }
 
-      if (r.status === 400 && withThinkingConfig) {
+      if (r.status === 400 && withThinkingConfig && generationConfig.thinkingConfig) {
         return await tryCallGemini(modelIndex, false);
       }
 
@@ -219,7 +207,7 @@ async function callOpenAiProxy(apiKey, prompt) {
           messages: [
             {
               role: 'system',
-              content: 'You are an expert exam assistant helping answer a graded online quiz. Carefully analyze each question, eliminate distractors and false traps step-by-step, and return a valid JSON array of answers in this exact format: [{"q":1,"thought":"brief reasoning","answers":[0]}]. Return ONLY the JSON array. Do not include markdown code block syntax.',
+              content: 'You are an AI assistant helping answer a graded online quiz. Return ONLY a valid JSON array of answers in this exact format: [{"q":1,"answers":[0]}]. Do not include markdown code block syntax. Do not include any explanations.',
             },
             { role: 'user', content: prompt }
           ],
@@ -342,7 +330,7 @@ async function callGroqProxy(apiKey, prompt) {
           messages: [
             {
               role: 'system',
-              content: 'You are an expert exam assistant helping answer a graded online quiz. Carefully analyze each question, eliminate distractors and false traps step-by-step, and return a valid JSON array of answers in this exact format: [{"q":1,"thought":"brief reasoning","answers":[0]}]. Return ONLY the JSON array. Do not include markdown code block syntax.',
+              content: 'You are an AI assistant helping answer a graded online quiz. Return ONLY a valid JSON array of answers in this exact format: [{"q":1,"answers":[0]}]. Do not include markdown code block syntax. Do not include any explanations.',
             },
             { role: 'user', content: prompt }
           ],

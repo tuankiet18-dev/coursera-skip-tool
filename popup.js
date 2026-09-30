@@ -208,18 +208,6 @@ function updateUILanguage() {
   const apiKeyHint = document.getElementById('txt-popup-api-key-hint');
   if (apiKeyHint) apiKeyHint.textContent = t('apiKeyHint');
 
-  const contextTitle = document.getElementById('txt-popup-context-title');
-  const contextInput = document.getElementById('popup-context-input');
-  const contextHint = document.getElementById('txt-popup-context-hint');
-  const saveContextBtn = document.getElementById('popup-save-context-btn');
-  const clearContextBtn = document.getElementById('popup-clear-context-btn');
-
-  if (contextTitle) contextTitle.textContent = currentLang === 'vi' ? '📚 Quizlet / Tài liệu bài học (tùy chọn)' : '📚 Quizlet / Reference Notes (optional)';
-  if (contextInput) contextInput.placeholder = currentLang === 'vi' ? 'Dán flashcards Quizlet vào đây để AI trả lời chính xác 100%...' : 'Paste Quizlet flashcards here for 100% accurate AI answers...';
-  if (contextHint) contextHint.textContent = currentLang === 'vi' ? 'Ưu tiên nguồn đáp án từ tài liệu' : 'Prioritizes answers from notes';
-  if (saveContextBtn) saveContextBtn.textContent = currentLang === 'vi' ? 'Lưu' : 'Save';
-  if (clearContextBtn) clearContextBtn.textContent = currentLang === 'vi' ? 'Xóa' : 'Clear';
-
   refreshPopupApiKeyUI();
 
   if (currentContext && currentContext.itemType) {
@@ -283,13 +271,6 @@ function refreshPopupApiKeyUI(preferredProvider) {
       if (mask) mask.textContent = '';
       if (input) input.placeholder = provInfo.placeholder || t('apiKeyDefaultPlaceholder');
       if (deleteBtn) deleteBtn.style.display = 'none';
-    }
-
-    const contextInputEl = document.getElementById('popup-context-input');
-    const clearContextBtnEl = document.getElementById('popup-clear-context-btn');
-    if (contextInputEl && cfg && cfg.quizletContext && !contextInputEl.value) {
-      contextInputEl.value = cfg.quizletContext;
-      if (clearContextBtnEl) clearContextBtnEl.style.display = 'inline-block';
     }
   }
 
@@ -820,37 +801,6 @@ function handlePopupSaveKey() {
 
 if (popupSaveKeyBtn) {
   popupSaveKeyBtn.addEventListener('click', handlePopupSaveKey);
-}
-
-const popupContextInput = document.getElementById('popup-context-input');
-const popupSaveContextBtn = document.getElementById('popup-save-context-btn');
-const popupClearContextBtn = document.getElementById('popup-clear-context-btn');
-
-if (popupContextInput) {
-  popupContextInput.addEventListener('input', () => {
-    if (popupClearContextBtn) {
-      popupClearContextBtn.style.display = popupContextInput.value.trim().length > 0 ? 'inline-block' : 'none';
-    }
-  });
-}
-
-if (popupSaveContextBtn && popupContextInput) {
-  popupSaveContextBtn.addEventListener('click', () => {
-    const context = popupContextInput.value;
-    chrome.runtime.sendMessage({ action: 'setQuizletContext', context }, () => {
-      showAlert('success', currentLang === 'vi' ? '✅ Đã lưu tài liệu tham khảo!' : '✅ Reference notes saved!');
-    });
-  });
-}
-
-if (popupClearContextBtn && popupContextInput) {
-  popupClearContextBtn.addEventListener('click', () => {
-    popupContextInput.value = '';
-    popupClearContextBtn.style.display = 'none';
-    chrome.runtime.sendMessage({ action: 'setQuizletContext', context: '' }, () => {
-      showAlert('warning', currentLang === 'vi' ? '🗑️ Đã xóa tài liệu tham khảo!' : '🗑️ Reference notes cleared!');
-    });
-  });
 }
 
 // Init
