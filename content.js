@@ -1423,7 +1423,8 @@ function extractQuizQuestions() {
         return { label, element: inp };
       });
 
-      questions.push({ index: idx, questionText, type, options });
+      const targetContainer = firstInput.closest('fieldset, form, div') || firstInput.parentElement;
+      questions.push({ index: idx, questionText, type, options, container: targetContainer, targetEl: closestHeading });
     });
     return questions;
   }
@@ -1440,10 +1441,12 @@ function extractQuizQuestions() {
       'h3', 'h4', 'p',
     ];
     let questionText = '';
+    let textEl = null;
     for (const sel of textSelectors) {
       const el = container.querySelector(sel);
       if (el && el.innerText.trim()) {
         questionText = el.innerText.trim();
+        textEl = el;
         break;
       }
     }
@@ -1476,7 +1479,7 @@ function extractQuizQuestions() {
       return { label, element: inp };
     });
 
-    questions.push({ index: idx, questionText, type, options });
+    questions.push({ index: idx, questionText, type, options, container, targetEl: textEl });
   });
 
   console.log(`[CourseraSkip] extractQuizQuestions: found ${questions.length} questions`);
@@ -1484,18 +1487,119 @@ function extractQuizQuestions() {
 }
 
 /**
- * Build a structured prompt for Gemini.
+ * Inject a 1-click Quizlet search button next to each question on Coursera.
+ * Clicking it opens Google Search: site:quizlet.com "<clean question query>"
  */
-function buildGeminiPrompt(questions) {
+function injectQuizletButtonsToQuestions(questions) {
+  if (!questions || !Array.isArray(questions)) return;
+
+  questions.forEach((q) => {
+    const container = q.container;
+    if (!container) return;
+
+    // Avoid duplicate buttons
+    if (container.querySelector('.cs-quizlet-btn')) return;
+
+    const titleEl = q.targetEl || container.querySelector(
+      '[data-testid="question-text"], [class*="question-text"], [class*="questionText"], .rc-CML, [class*="prompt"], h3, h4, p'
+    ) || container.firstElementChild || container;
+
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'cs-quizlet-btn';
+    btn.title = wt('quizletBtnTitle');
+    btn.textContent = '🔍 Quizlet';
+
+    // Styling for sleek, non-intrusive badge
+    btn.style.cssText = `
+      display: inline-flex;
+      align-items: center;
+      gap: 3px;
+      margin-left: 8px;
+      padding: 2px 8px;
+      font-size: 11px;
+      font-weight: 600;
+      color: #3b82f6;
+      background: #eff6ff;
+      border: 1px solid #bfdbfe;
+      border-radius: 12px;
+      cursor: pointer;
+      vertical-align: middle;
+      transition: all 0.15s ease;
+      line-height: 1.3;
+      user-select: none;
+    `;
+
+    btn.onmouseenter = () => {
+      btn.style.background = '#2563eb';
+      btn.style.color = '#ffffff';
+      btn.style.borderColor = '#2563eb';
+      btn.style.boxShadow = '0 2px 6px rgba(37, 99, 235, 0.3)';
+    };
+
+    btn.onmouseleave = () => {
+      btn.style.background = '#eff6ff';
+      btn.style.color = '#3b82f6';
+      btn.style.borderColor = '#bfdbfe';
+      btn.style.boxShadow = 'none';
+    };
+
+    btn.addEventListener('click', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+
+      // Clean query: strip question numbers, "(Select two.)", "1 point", etc.
+      let query = (q.questionText || '')
+        .replace(/^(?:question\s*\d+|câu\s*\d+|\d+)\s*[:.)-]\s*/i, '')
+        .replace(/\((?:select|chọn)[^)]*\)/gi, '')
+        .replace(/\b\d+\s*points?\b/gi, '')
+        .replace(/[\r\n\t]+/g, ' ')
+        .trim();
+
+      if (query.length > 150) {
+        query = query.slice(0, 150);
+      }
+
+      const googleUrl = `https://www.google.com/search?q=site:quizlet.com+${encodeURIComponent(query)}`;
+      window.open(googleUrl, '_blank');
+    });
+
+    if (titleEl && titleEl.appendChild) {
+      titleEl.appendChild(btn);
+    } else {
+      container.insertBefore(btn, container.firstChild);
+    }
+  });
+}
+
+/**
+ * Build a structured prompt for AI quiz answering.
+ * Includes distractor elimination instructions and optional study notes / Quizlet reference material.
+ */
+function buildGeminiPrompt(questions, customContext = '') {
   const lines = [
-    'You are an AI assistant helping answer a graded online quiz. Read each question carefully and select the best answer(s).',
-    'Return ONLY a valid JSON array in this exact format (no explanation, no thoughts, no markdown):',
-    '[{"q":1,"answers":[0]},{"q":2,"answers":[1,3]}]',
-    'Where "q" is the question number (1-based integer) and "answers" is a list of 0-based option indices.',
-    'For single-choice, provide exactly 1 index. For multi-choice, provide the correct number of indices.',
-    '',
-    '=== QUESTIONS ===',
+    'You are an expert academic tutor and exam specialist helping answer a graded online course quiz.',
+    'Carefully read each question and all available options. Think step-by-step to distinguish between correct definitions and tricky distractor options.',
   ];
+
+  if (customContext && customContext.trim()) {
+    lines.push('');
+    lines.push('=== REFERENCE MATERIAL (QUIZLET / COURSE FLASHCARDS) ===');
+    lines.push(customContext.trim());
+    lines.push('=== END OF REFERENCE MATERIAL ===');
+    lines.push('PRIORITY INSTRUCTION: If any question matches the reference material above, strictly select the answer aligned with the reference material.');
+  }
+
+  lines.push('');
+  lines.push('INSTRUCTIONS:');
+  lines.push('1. Eliminate common distractors (e.g. distinguishing a role/person vs an analytical archetype or concept).');
+  lines.push('2. For multi-choice questions, select ALL options that strictly apply.');
+  lines.push('3. In your JSON response, for each question you may provide a brief "thought" explaining your elimination of distractors, followed by "answers" containing 0-based option indices.');
+  lines.push('Format: [{"q":1,"thought":"Brief analysis...","answers":[0]},{"q":2,"thought":"...","answers":[1,3]}]');
+  lines.push('Where "q" is the question number (1-based integer) and "answers" is a list of 0-based option indices.');
+  lines.push('For single-choice, provide exactly 1 index. For multi-choice, provide the correct number of indices.');
+  lines.push('');
+  lines.push('=== QUESTIONS ===');
 
   questions.forEach((q, i) => {
     const typeLabel = q.type === 'multi' ? '(multi-choice — select all that apply)' : '(single-choice)';
@@ -1794,11 +1898,24 @@ async function autoAnswerGradedQuiz() {
     };
   }
 
+  // Inject 1-click Quizlet search buttons on each question
+  try {
+    injectQuizletButtonsToQuestions(questions);
+  } catch (_) {}
+
   const provDisplayName = AI_PROVIDERS[activeProvider]?.name || activeProvider.toUpperCase();
   console.log(`[CourseraSkip] Sending ${questions.length} questions to ${provDisplayName}...`);
 
-  // 3. Build prompt and call AI
-  const prompt = buildGeminiPrompt(questions);
+  // 3. Read custom study / Quizlet context if provided
+  let customContext = '';
+  try {
+    if (typeof localStorage !== 'undefined') {
+      customContext = localStorage.getItem('coursera_skip_quiz_context') || '';
+    }
+  } catch (_) {}
+
+  // 4. Build prompt and call AI
+  const prompt = buildGeminiPrompt(questions, customContext);
   let answersFromAI;
   try {
     answersFromAI = await callAiWithRetry(activeProvider, apiKey, prompt);
@@ -1901,6 +2018,14 @@ const WIDGET_I18N = {
     apiKeyPaste: 'Dán',
     apiKeyPasted: '📋 Đã dán key từ Clipboard!',
     apiKeyPromptInput: 'Dán Gemini API Key (AIzaSy...) của bạn vào đây:',
+    quizletBtnTitle: 'Tìm câu hỏi này trên Quizlet (Google Search)',
+    contextTitle: 'Quizlet / Tài liệu bài học (tùy chọn)',
+    contextPlaceholder: 'Dán nội dung flashcards Quizlet hoặc tóm tắt bài học vào đây để AI trả lời chính xác 100%...',
+    contextHint: 'AI sẽ ưu tiên dùng tài liệu này làm nguồn đáp án',
+    contextSave: 'Lưu',
+    contextClear: 'Xóa',
+    contextSaved: '✅ Đã lưu tài liệu tham khảo!',
+    contextCleared: '🗑️ Đã xóa tài liệu tham khảo!',
   },
   en: {
     langBadge: 'EN',
@@ -1933,6 +2058,14 @@ const WIDGET_I18N = {
     apiKeyPaste: 'Paste',
     apiKeyPasted: '📋 Key pasted from clipboard!',
     apiKeyPromptInput: 'Paste your Gemini API Key (AIzaSy...) here:',
+    quizletBtnTitle: 'Search this question on Quizlet via Google',
+    contextTitle: 'Quizlet / Reference Notes (optional)',
+    contextPlaceholder: 'Paste Quizlet flashcards or lesson notes here for 100% accurate AI answers...',
+    contextHint: 'AI will prioritize this material as the ground truth source',
+    contextSave: 'Save',
+    contextClear: 'Clear',
+    contextSaved: '✅ Reference notes saved!',
+    contextCleared: '🗑️ Reference notes cleared!',
   }
 };
 
@@ -2069,6 +2202,12 @@ function updateWidgetContext() {
     if (quizBtn) quizBtn.style.display = 'flex';
     if (currentBtn) currentBtn.style.display = 'none';
     if (peerBtn) peerBtn.style.display = 'none';
+    try {
+      const qs = extractQuizQuestions();
+      if (qs && qs.length > 0) {
+        injectQuizletButtonsToQuestions(qs);
+      }
+    } catch (_) {}
   } else {
     if (peerBtn) peerBtn.style.display = 'none';
     if (quizBtn) quizBtn.style.display = 'none';
@@ -2109,6 +2248,18 @@ function updateWidgetLanguageUI() {
   if (apiKeyLabel) apiKeyLabel.textContent = wt('apiKeyLabel');
   if (apiKeyHint) apiKeyHint.textContent = wt('apiKeyHint');
   if (saveKeyBtnEl) saveKeyBtnEl.textContent = wt('apiKeySave');
+
+  const contextTitle = widgetShadow.getElementById('cs-context-title');
+  const contextInput = widgetShadow.getElementById('cs-context-input');
+  const contextHint = widgetShadow.getElementById('cs-context-hint');
+  const saveContextBtn = widgetShadow.getElementById('cs-save-context-btn');
+  const clearContextBtn = widgetShadow.getElementById('cs-clear-context-btn');
+
+  if (contextTitle) contextTitle.textContent = wt('contextTitle');
+  if (contextInput) contextInput.placeholder = wt('contextPlaceholder');
+  if (contextHint) contextHint.textContent = wt('contextHint');
+  if (saveContextBtn) saveContextBtn.textContent = wt('contextSave');
+  if (clearContextBtn) clearContextBtn.textContent = wt('contextClear');
 
   refreshWidgetApiKeyUI();
   updateWidgetContext();
@@ -2932,6 +3083,22 @@ function initFloatingWidget() {
             </button>
           </div>
           <p class="cs-settings-hint" id="cs-api-key-hint">Lấy key miễn phí tại Google AI Studio (aistudio.google.com)</p>
+
+          <!-- Quizlet / Course Notes Context -->
+          <div class="cs-context-box" style="margin-top: 8px; padding-top: 8px; border-top: 1px solid rgba(255, 255, 255, 0.08); display: flex; flex-direction: column; gap: 4px;">
+            <div style="display: flex; justify-content: space-between; align-items: center;">
+              <label class="cs-input-label" id="cs-context-title" style="display: flex; align-items: center; gap: 4px; color: #a5b4fc; font-weight: 600;">
+                📚 Quizlet / Tài liệu bài học (tùy chọn)
+              </label>
+              <button type="button" class="cs-clear-context-btn" id="cs-clear-context-btn" style="background: none; border: none; color: #94a3b8; font-size: 10px; cursor: pointer; display: none;">Xóa</button>
+            </div>
+            <textarea class="cs-context-input" id="cs-context-input" rows="3" placeholder="Dán nội dung flashcards Quizlet hoặc tóm tắt bài học vào đây để AI trả lời chính xác 100%..." style="width: 100%; background: rgba(30, 41, 59, 0.85); border: 1px solid rgba(255, 255, 255, 0.14); border-radius: 6px; padding: 6px 8px; font-size: 10px; color: #f1f5f9; outline: none; resize: vertical; font-family: monospace; line-height: 1.3; box-sizing: border-box;"></textarea>
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 2px;">
+              <span class="cs-context-hint" id="cs-context-hint" style="font-size: 9px; color: #64748b;">AI sẽ ưu tiên dùng tài liệu này làm nguồn đáp án</span>
+              <button type="button" class="cs-save-context-btn" id="cs-save-context-btn" style="background: rgba(99, 102, 241, 0.2); border: 1px solid rgba(99, 102, 241, 0.4); color: #c7d2fe; border-radius: 4px; padding: 2px 7px; font-size: 10px; font-weight: 600; cursor: pointer;">Lưu</button>
+            </div>
+          </div>
+
           <p style="margin-top: 4px; font-size: 10px; color: #64748b; line-height: 1.3; text-align: center;">Key lưu cục bộ trên máy. Độc lập, không liên kết với Coursera Inc.</p>
         </div>
 
@@ -2974,6 +3141,10 @@ function initFloatingWidget() {
   const deleteKeyBtn = widgetShadow.getElementById('cs-delete-key-btn');
   const toggleEyeBtn = widgetShadow.getElementById('cs-toggle-eye-btn');
   const clearInputBtn = widgetShadow.getElementById('cs-clear-input-btn');
+
+  const contextInput = widgetShadow.getElementById('cs-context-input');
+  const saveContextBtn = widgetShadow.getElementById('cs-save-context-btn');
+  const clearContextBtn = widgetShadow.getElementById('cs-clear-context-btn');
 
   // Load saved minimize state
   const isMinimized = localStorage.getItem('coursera_skip_widget_minimized') === 'true';
@@ -3181,6 +3352,64 @@ function initFloatingWidget() {
     saveKeyBtn.addEventListener('click', (e) => {
       e.stopPropagation();
       handleSaveApiKey();
+    });
+  }
+
+  // Quizlet / Study Context Handlers
+  try {
+    const savedCtx = localStorage.getItem('coursera_skip_quiz_context') || '';
+    if (contextInput) {
+      contextInput.value = savedCtx;
+      if (clearContextBtn) clearContextBtn.style.display = savedCtx.length > 0 ? 'inline-block' : 'none';
+    }
+    chrome.runtime.sendMessage({ action: 'getAiConfig' }, (res) => {
+      if (res && res.quizletContext && contextInput && !contextInput.value) {
+        contextInput.value = res.quizletContext;
+        localStorage.setItem('coursera_skip_quiz_context', res.quizletContext);
+        if (clearContextBtn) clearContextBtn.style.display = 'inline-block';
+      }
+    });
+  } catch (_) {}
+
+  if (contextInput) {
+    contextInput.addEventListener('mousedown', (e) => e.stopPropagation());
+    contextInput.addEventListener('pointerdown', (e) => e.stopPropagation());
+    contextInput.addEventListener('click', (e) => e.stopPropagation());
+    contextInput.addEventListener('keydown', (e) => e.stopPropagation());
+    contextInput.addEventListener('keyup', (e) => e.stopPropagation());
+    contextInput.addEventListener('keypress', (e) => e.stopPropagation());
+    contextInput.addEventListener('input', () => {
+      if (clearContextBtn) {
+        clearContextBtn.style.display = contextInput.value.trim().length > 0 ? 'inline-block' : 'none';
+      }
+      try {
+        localStorage.setItem('coursera_skip_quiz_context', contextInput.value);
+        chrome.runtime.sendMessage({ action: 'setQuizletContext', context: contextInput.value });
+      } catch (_) {}
+    });
+  }
+
+  if (saveContextBtn && contextInput) {
+    saveContextBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      try {
+        localStorage.setItem('coursera_skip_quiz_context', contextInput.value);
+        chrome.runtime.sendMessage({ action: 'setQuizletContext', context: contextInput.value });
+        showWidgetAlert('success', wt('contextSaved'));
+      } catch (_) {}
+    });
+  }
+
+  if (clearContextBtn && contextInput) {
+    clearContextBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      contextInput.value = '';
+      clearContextBtn.style.display = 'none';
+      try {
+        localStorage.removeItem('coursera_skip_quiz_context');
+        chrome.runtime.sendMessage({ action: 'setQuizletContext', context: '' });
+        showWidgetAlert('warning', wt('contextCleared'));
+      } catch (_) {}
     });
   }
 

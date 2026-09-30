@@ -586,6 +586,19 @@
           <button type="button" id="popup-delete-key-btn" style="background: rgba(239, 68, 68, 0.1); border: 1px solid rgba(239, 68, 68, 0.3); color: #f87171; border-radius: 6px; padding: 3px 8px; font-size: 10px; font-weight: 600; cursor: pointer; display: none;">🗑️ <span id="txt-popup-delete-key">Xóa key</span></button>
         </div>
         <p id="txt-popup-api-key-hint" style="font-size: 10px; color: #64748b; line-height: 1.3; margin-top: 2px;">Lấy key miễn phí tại Google AI Studio (aistudio.google.com)</p>
+
+        <!-- Quizlet / Study Context in Popup -->
+        <div style="margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--card-border); display: flex; flex-direction: column; gap: 4px;">
+          <div style="display: flex; justify-content: space-between; align-items: center;">
+            <label style="font-size: 10px; font-weight: 600; color: #a5b4fc;" id="txt-popup-context-title">📚 Quizlet / Tài liệu bài học (tùy chọn)</label>
+            <button type="button" id="popup-clear-context-btn" style="background: none; border: none; color: #94a3b8; font-size: 10px; cursor: pointer; display: none;">Xóa</button>
+          </div>
+          <textarea id="popup-context-input" rows="2" placeholder="Dán flashcards Quizlet vào đây để AI trả lời chính xác 100%..." style="width: 100%; background: rgba(15, 23, 42, 0.85); border: 1px solid var(--card-border); border-radius: 6px; padding: 5px 8px; font-size: 10px; color: #fff; font-family: monospace; outline: none; resize: vertical; box-sizing: border-box;"></textarea>
+          <div style="display: flex; justify-content: space-between; align-items: center;">
+            <span style="font-size: 9px; color: #64748b;" id="txt-popup-context-hint">Ưu tiên nguồn đáp án từ tài liệu</span>
+            <button type="button" id="popup-save-context-btn" style="background: rgba(99, 102, 241, 0.2); border: 1px solid rgba(99, 102, 241, 0.4); color: #c7d2fe; border-radius: 4px; padding: 2px 7px; font-size: 10px; font-weight: 600; cursor: pointer;">Lưu</button>
+          </div>
+        </div>
       </div>
     </div>
 
