@@ -559,7 +559,7 @@ async function runTests() {
 
     const res = await vm.runInContext('autoGradePeerReview()', sb);
     assert.strictEqual(res.success, true);
-    assert.ok(res.message.includes('1 tiêu chí'), 'Should discover and select the delayed rubric');
+    assert.strictEqual(res.key, 'peerSuccess', 'Should discover and select the delayed rubric');
     console.log('  -> PASS: polling waits for rubric and succeeds\n');
     passedCount++;
   }
@@ -572,7 +572,7 @@ async function runTests() {
     const sb = createSandbox('https://www.coursera.org/learn/test/peer/abc');
     const res = await vm.runInContext('autoGradePeerReview()', sb);
     assert.strictEqual(res.success, false);
-    assert.ok(res.error.includes('Không tìm thấy'));
+    assert.strictEqual(res.key, 'peerFormNotFound');
     console.log('  -> PASS: returns success: false when no rubric exists\n');
     passedCount++;
   }
@@ -697,7 +697,7 @@ async function runTests() {
     assert.strictEqual(res.submitted, false);
     assert.strictEqual(res.skippedDuplicate, true);
     assert.strictEqual(postAttempted, false, 'POST must NOT be called when duplicate is detected');
-    assert.ok(res.message.includes('từ trước rồi'));
+    assert.strictEqual(res.key, 'discAlreadyAnswered');
     console.log('  -> PASS: duplicate detected, skipped POST and avoided duplicates\n');
     passedCount++;
   }

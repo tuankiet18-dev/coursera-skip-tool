@@ -142,7 +142,7 @@
       display: inline-flex;
       align-items: center;
       gap: 6px;
-      font-size: 10px;
+      font-size: 11px;
       font-weight: 700;
       text-transform: uppercase;
       letter-spacing: 0.05em;
@@ -179,8 +179,8 @@
     }
 
     .meta-label {
-      color: var(--text-subtle);
-      font-size: 11px;
+      color: var(--text-muted);
+      font-size: 12px;
     }
 
     .type-pill {
@@ -349,6 +349,65 @@
       box-shadow: 0 4px 14px rgba(236, 72, 153, 0.45);
     }
 
+    .btn-bulk {
+      background: rgba(255, 255, 255, 0.04);
+      border: 1px solid var(--card-border);
+      color: var(--text);
+      box-shadow: none;
+    }
+    .btn-bulk .btn-icon { color: var(--bulk-accent, #94a3b8); }
+    .btn-bulk:hover:not(:disabled) {
+      background: rgba(255, 255, 255, 0.09);
+      border-color: var(--bulk-accent, rgba(255, 255, 255, 0.2));
+    }
+    .btn-bulk-vr { --bulk-accent: #10b981; }
+    .btn-bulk-disc { --bulk-accent: #38bdf8; }
+
+    .bulk-label {
+      font-size: 11px;
+      font-weight: 600;
+      color: var(--text-subtle);
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      margin-top: 4px;
+    }
+
+    .confirm-panel {
+      display: none;
+      background: rgba(245, 158, 11, 0.08);
+      border: 1px solid rgba(245, 158, 11, 0.35);
+      border-radius: 10px;
+      padding: 10px 12px;
+      flex-direction: column;
+      gap: 8px;
+      animation: fadeIn 0.2s ease;
+    }
+    .confirm-title { font-size: 12px; font-weight: 700; color: #fbbf24; }
+    .confirm-msg { font-size: 12px; color: #cbd5e1; line-height: 1.4; }
+    .confirm-actions { display: flex; gap: 8px; }
+    .confirm-actions .btn { padding: 8px 10px; }
+    .btn-confirm { background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%); color: #111827; }
+
+    .btn:focus-visible, .lang-pill:focus-visible, .provider-tab:focus-visible,
+    .btn-rate:focus-visible, .btn-subtle:focus-visible, .close-btn:focus-visible,
+    .footer a:focus-visible, button:focus-visible {
+      outline: 2px solid #a5b4fc;
+      outline-offset: 2px;
+    }
+
+    .btn-icon {
+      width: 14px;
+      height: 14px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+    }
+    .btn-icon svg {
+      width: 14px;
+      height: 14px;
+    }
+
     .spinner {
       display: none;
       width: 14px;
@@ -364,14 +423,15 @@
 
     /* Smart Rating Toast/Card */
     .rating-toast {
-      background: rgba(234, 179, 8, 0.08);
-      border: 1px solid rgba(234, 179, 8, 0.25);
+      background: rgba(15, 23, 42, 0.95);
+      border: 1px solid rgba(234, 179, 8, 0.3);
       border-radius: 10px;
       padding: 10px 12px;
-      animation: fadeIn 0.3s ease;
+      animation: fadeIn 0.25s ease;
       display: flex;
       flex-direction: column;
-      gap: 6px;
+      gap: 7px;
+      box-shadow: 0 6px 20px rgba(0, 0, 0, 0.35);
     }
 
     .rating-top {
@@ -384,9 +444,7 @@
       font-size: 11px;
       font-weight: 700;
       color: #fde047;
-      display: flex;
-      align-items: center;
-      gap: 4px;
+      letter-spacing: 0.02em;
     }
 
     .close-btn {
@@ -397,18 +455,22 @@
       font-size: 12px;
       padding: 2px 4px;
       line-height: 1;
+      border-radius: 4px;
+      transition: color 0.15s;
     }
-    .close-btn:hover { color: #fff; }
+    .close-btn:hover {
+      color: #f1f5f9;
+    }
 
     .rating-msg {
       font-size: 11px;
-      color: #cbd5e1;
-      line-height: 1.35;
+      color: #94a3b8;
+      line-height: 1.4;
     }
 
     .btn-rate {
-      background: linear-gradient(135deg, #eab308 0%, #ca8a04 100%);
-      color: #0b0f19;
+      background: #facc15;
+      color: #0f172a;
       font-weight: 700;
       padding: 6px 10px;
       border-radius: 6px;
@@ -420,11 +482,52 @@
       display: flex;
       align-items: center;
       justify-content: center;
-      gap: 4px;
+      gap: 5px;
     }
     .btn-rate:hover {
-      background: #facc15;
-      color: #000;
+      background: #fde047;
+      transform: translateY(-1px);
+      box-shadow: 0 4px 12px rgba(250, 204, 21, 0.35);
+    }
+
+    .rating-secondary-actions {
+      display: flex;
+      gap: 6px;
+      margin-top: 2px;
+    }
+
+    .btn-subtle {
+      flex: 1;
+      padding: 5px 8px;
+      border-radius: 6px;
+      font-size: 10px;
+      font-weight: 500;
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      background: rgba(255, 255, 255, 0.03);
+      color: #94a3b8;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      text-align: center;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .btn-subtle:hover {
+      background: rgba(255, 255, 255, 0.08);
+      color: #f1f5f9;
+      border-color: rgba(255, 255, 255, 0.16);
+    }
+    .btn-subtle.btn-already-rated:hover {
+      border-color: rgba(34, 197, 94, 0.4);
+      color: #86efac;
+    }
+    .btn-subtle.btn-reload-action {
+      border-color: rgba(59, 130, 246, 0.25);
+      color: #93c5fd;
+    }
+    .btn-subtle.btn-reload-action:hover {
+      border-color: rgba(59, 130, 246, 0.5);
+      color: #bfdbfe;
     }
 
     .provider-tabs {
@@ -499,12 +602,13 @@
     /* Footer */
     .footer {
       text-align: center;
-      font-size: 10px;
+      font-size: 11px;
       color: var(--text-subtle);
       display: flex;
       align-items: center;
       justify-content: center;
-      gap: 8px;
+      flex-wrap: wrap;
+      gap: 6px 8px;
       padding-top: 2px;
     }
 
@@ -540,11 +644,10 @@
       </div>
 
       <div class="header-controls">
-        <button id="btn-settings-toggle" class="lang-pill" title="AI Settings / Cài đặt AI">
-          <span>⚙️</span>
+        <button id="btn-settings-toggle" class="lang-pill" title="AI Settings / Cài đặt AI" aria-label="AI Settings">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
         </button>
-        <button id="btn-lang-toggle" class="lang-pill" title="Switch Language / Đổi ngôn ngữ">
-          <span>🌐</span>
+        <button id="btn-lang-toggle" class="lang-pill" title="Switch Language / Đổi ngôn ngữ" aria-label="Switch language">
           <span id="txt-lang-badge" class="active-text">VI</span>
         </button>
       </div>
@@ -556,15 +659,15 @@
     <!-- Settings Card (Collapsible) -->
     <div id="popup-settings" class="card" style="display: none;">
       <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px;">
-        <span style="font-size: 11px; font-weight: 700; color: #a5b4fc;" id="txt-popup-settings-title">⚙️ Cài đặt AI (Gemini / GPT / Groq)</span>
+        <span style="font-size: 11px; font-weight: 700; color: #a5b4fc;" id="txt-popup-settings-title">Cài đặt AI (Gemini / GPT / Groq)</span>
         <span id="popup-key-status-badge" style="font-size: 10px; padding: 2px 7px; border-radius: 10px; font-weight: 600;">○ Chưa có key</span>
       </div>
 
       <!-- Provider Tabs -->
       <div class="provider-tabs" id="popup-provider-tabs">
-        <button type="button" class="provider-tab active" data-provider="gemini">♊ Gemini</button>
-        <button type="button" class="provider-tab" data-provider="openai">🟢 OpenAI</button>
-        <button type="button" class="provider-tab" data-provider="groq">⚡ Groq</button>
+        <button type="button" class="provider-tab active" data-provider="gemini">Gemini</button>
+        <button type="button" class="provider-tab" data-provider="openai">OpenAI</button>
+        <button type="button" class="provider-tab" data-provider="groq">Groq</button>
       </div>
 
       <div style="display: flex; flex-direction: column; gap: 6px;">
@@ -576,14 +679,14 @@
           <div style="position: relative; flex: 1; display: flex; align-items: center;">
             <input type="password" id="popup-api-key-input" placeholder="AIza..." autocomplete="off" spellcheck="false"
                    style="width: 100%; background: rgba(15, 23, 42, 0.85); border: 1px solid var(--card-border); border-radius: 6px; padding: 6px 44px 6px 8px; font-size: 11px; color: #fff; font-family: monospace; outline: none;" />
-            <button type="button" id="popup-clear-key-btn" title="Clear input" style="position: absolute; right: 23px; background: transparent; border: none; color: #94a3b8; cursor: pointer; padding: 2px 4px; font-size: 11px; display: none;">✕</button>
-            <button type="button" id="popup-toggle-eye-btn" title="Toggle visibility" style="position: absolute; right: 5px; background: transparent; border: none; color: #94a3b8; cursor: pointer; padding: 2px 4px; font-size: 11px;">👁️</button>
+            <button type="button" id="popup-clear-key-btn" title="Clear input" aria-label="Clear input" style="position: absolute; right: 23px; background: transparent; border: none; color: #94a3b8; cursor: pointer; padding: 2px 4px; font-size: 11px; display: none;">✕</button>
+            <button type="button" id="popup-toggle-eye-btn" title="Toggle visibility" aria-label="Toggle key visibility" style="position: absolute; right: 5px; background: transparent; border: none; color: #94a3b8; cursor: pointer; padding: 2px 4px; font-size: 11px;">👁️</button>
           </div>
-          <button type="button" id="popup-paste-key-btn" style="background: rgba(56, 189, 248, 0.15); border: 1px solid rgba(56, 189, 248, 0.35); border-radius: 6px; padding: 6px 9px; font-size: 11px; font-weight: 600; color: #38bdf8; cursor: pointer; white-space: nowrap;">📋 <span id="txt-popup-paste-key">Dán</span></button>
+          <button type="button" id="popup-paste-key-btn" style="background: rgba(56, 189, 248, 0.15); border: 1px solid rgba(56, 189, 248, 0.35); border-radius: 6px; padding: 6px 9px; font-size: 11px; font-weight: 600; color: #38bdf8; cursor: pointer; white-space: nowrap;"><span id="txt-popup-paste-key">Dán</span></button>
           <button type="button" id="popup-save-key-btn" style="background: var(--grad-primary); border: none; border-radius: 6px; padding: 6px 12px; font-size: 11px; font-weight: 700; color: #fff; cursor: pointer; white-space: nowrap;">Lưu</button>
         </div>
         <div style="display: flex; justify-content: flex-end; margin-top: 2px;">
-          <button type="button" id="popup-delete-key-btn" style="background: rgba(239, 68, 68, 0.1); border: 1px solid rgba(239, 68, 68, 0.3); color: #f87171; border-radius: 6px; padding: 3px 8px; font-size: 10px; font-weight: 600; cursor: pointer; display: none;">🗑️ <span id="txt-popup-delete-key">Xóa key</span></button>
+          <button type="button" id="popup-delete-key-btn" style="background: rgba(239, 68, 68, 0.1); border: 1px solid rgba(239, 68, 68, 0.3); color: #f87171; border-radius: 6px; padding: 3px 8px; font-size: 10px; font-weight: 600; cursor: pointer; display: none;"><span id="txt-popup-delete-key">Xóa key</span></button>
         </div>
         <p id="txt-popup-api-key-hint" style="font-size: 10px; color: #64748b; line-height: 1.3; margin-top: 2px;">Lấy key miễn phí tại Google AI Studio (aistudio.google.com)</p>
       </div>
@@ -599,7 +702,6 @@
       <div class="lesson-meta">
         <span class="meta-label" id="txt-lesson-type-label">Lesson Type</span>
         <span class="type-pill" id="lbl-type">
-          <span id="lbl-type-icon">🎬</span>
           <span id="lbl-type-text">Lecture (Video)</span>
         </span>
       </div>
@@ -608,7 +710,9 @@
     <!-- State 2: Clean Step-by-Step Guide Card -->
     <div id="empty-msg" class="empty-card" style="display: none;">
       <div class="empty-header">
-        <div class="empty-icon">🎓</div>
+        <div class="empty-icon">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
+        </div>
         <div>
           <div class="empty-title" id="txt-empty-title">Ready to Automate</div>
           <div class="empty-sub" id="txt-empty-sub">Follow 3 simple steps to start:</div>
@@ -631,35 +735,48 @@
       </div>
 
       <button id="btn-guide-action" class="btn btn-outline">
-        <span id="txt-guide-action-btn">🚀 Open Coursera</span>
+        <span id="txt-guide-action-btn">Open Coursera</span>
       </button>
     </div>
 
     <!-- Action Buttons -->
     <div class="actions" id="action-buttons" style="display: none;">
       <button id="btn-skip-current" class="btn btn-primary">
-        <span class="btn-icon">⚡</span>
+        <svg class="btn-icon" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
         <div class="spinner"></div>
         <span class="btn-text" id="txt-btn-skip-current">Complete Current Lesson</span>
       </button>
 
-      <button id="btn-skip-all" class="btn btn-magic">
-        <span class="btn-icon">🚀</span>
+      <button id="btn-auto-review" class="btn btn-peer" style="display: none;">
+        <svg class="btn-icon" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+        <div class="spinner"></div>
+        <span class="btn-text" id="txt-btn-auto-review">Auto Grade Peer Review</span>
+      </button>
+
+      <div class="bulk-label" id="txt-bulk-label">Bulk actions</div>
+
+      <button id="btn-skip-all" class="btn btn-bulk btn-bulk-vr">
+        <svg class="btn-icon" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><polygon points="13 19 22 12 13 5 13 19"/><polygon points="2 19 11 12 2 5 2 19"/></svg>
         <div class="spinner"></div>
         <span class="btn-text" id="txt-btn-skip-all">Complete All Video & Reading</span>
       </button>
 
-      <button id="btn-skip-all-discussions" class="btn btn-discuss">
-        <span class="btn-icon">💬</span>
+      <button id="btn-skip-all-discussions" class="btn btn-bulk btn-bulk-disc">
+        <svg class="btn-icon" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
         <div class="spinner"></div>
         <span class="btn-text" id="txt-btn-skip-all-discussions">Complete All Discussions</span>
       </button>
 
-      <button id="btn-auto-review" class="btn btn-peer" style="display: none;">
-        <span class="btn-icon">👥</span>
-        <div class="spinner"></div>
-        <span class="btn-text" id="txt-btn-auto-review">Auto Grade Peer Review</span>
-      </button>
+    </div>
+
+    <!-- Bulk Confirm -->
+    <div id="bulk-confirm" class="confirm-panel" role="alertdialog" aria-labelledby="txt-confirm-title" aria-describedby="txt-confirm-msg">
+      <div class="confirm-title" id="txt-confirm-title">Are you sure?</div>
+      <div class="confirm-msg" id="txt-confirm-msg"></div>
+      <div class="confirm-actions">
+        <button id="btn-confirm-cancel" class="btn btn-outline" type="button"><span id="txt-confirm-cancel">Cancel</span></button>
+        <button id="btn-confirm-ok" class="btn btn-confirm" type="button"><span id="txt-confirm-ok">Continue</span></button>
+      </div>
     </div>
 
     <!-- Progress UI -->
@@ -673,29 +790,37 @@
       </div>
     </div>
 
-    <!-- Gentle Rating Prompt (Only shown when lesson finishes successfully) -->
+    <!-- Smart Celebration & Rating Prompt -->
     <div id="rating-toast" class="rating-toast" style="display: none;">
       <div class="rating-top">
-        <span class="rating-label" id="txt-rating-label">🎉 Completed!</span>
-        <button id="btn-close-rating" class="close-btn" title="Close">✕</button>
+        <span class="rating-label" id="txt-rating-label">Lesson Completed</span>
+        <button id="btn-close-rating" class="close-btn" title="Close" aria-label="Close">✕</button>
       </div>
-      <div class="rating-msg" id="txt-rating-msg">Saved your time? Give us 5 stars on Chrome Web Store!</div>
+      <div class="rating-msg" id="txt-rating-msg">Saved your time? Consider leaving a review on Chrome Web Store.</div>
+      
       <button id="btn-rate-store" class="btn-rate">
-        <span>⭐ Rate 5 Stars</span>
+        <span id="txt-btn-rate-store">Rate on Store</span>
       </button>
+
+      <div class="rating-secondary-actions">
+        <button id="btn-already-rated" class="btn-subtle btn-already-rated" type="button">
+          <span id="txt-btn-already-rated">Already Rated</span>
+        </button>
+        <button id="btn-reload-coursera" class="btn-subtle btn-reload-action" type="button" style="display: none;">
+          <span id="txt-btn-reload-coursera">Reload Page</span>
+        </button>
+      </div>
     </div>
 
     <!-- Minimal Footer -->
     <div class="footer">
-      <span>Open Source</span>
-      <span>•</span>
       <a href="https://github.com/tuankiet18-dev/coursera-skip-tool" target="_blank">GitHub</a>
       <span>•</span>
-      <a id="lnk-footer-rate" href="#" class="star">⭐ Rate 5★</a>
+      <a id="lnk-footer-rate" href="#" class="star"><span id="txt-footer-rate">Rate on Store</span></a>
       <span>•</span>
       <a id="lnk-footer-donate" href="#"><span id="txt-footer-donate">☕ Support</span></a>
     </div>
-    <div style="font-size: 10px; color: var(--text-subtle); text-align: center; margin-top: 6px; line-height: 1.3;">
+    <div style="font-size: 11px; color: var(--text-subtle); text-align: center; margin-top: 4px; line-height: 1.4;">
       Independent open-source tool. Unaffiliated with Coursera Inc.
     </div>
 

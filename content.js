@@ -342,7 +342,7 @@ async function markLectureCompleted(userId, courseId, courseSlug, itemId, isBulk
 
   // Đã hết 90 giây - progress đã được lưu (PUT 204) nhưng backend chưa phản hồi
   if (progressOk) {
-    return { success: true, step: 3, videoId: meta.videoId, message: '✅ Tiến trình đã lưu nhưng Coursera chưa cập nhật giao diện. Thử F5 lại trang sau 1 phút.' };
+    return { success: true, step: 3, videoId: meta.videoId, key: 'successLecture', message: wt('successLecture') };
   }
   return { success: false, error: 'Báo cáo tiến trình thất bại sau 90 giây.' };
 }
@@ -378,7 +378,7 @@ async function markSupplementCompleted(userId, courseId, courseSlug, itemId) {
 async function markCurrentItemCompleted() {
   const context = getCourseContext();
   if (!context || !context.courseSlug) {
-    return { success: false, error: 'Không nhận diện được khóa học. Hãy mở một trang khóa học Coursera.' };
+    return { success: false, key: 'notOnLesson', error: wt('notOnLesson') };
   }
 
   const { courseSlug, itemType, itemId } = context;
@@ -387,7 +387,8 @@ async function markCurrentItemCompleted() {
   if (!itemId) {
     return {
       success: false,
-      error: 'Bạn đang ở trang tổng quan khóa học. Hãy mở 1 bài học cụ thể (Video, Reading, Discussion) để hoàn thành bài lẻ, hoặc bấm 1 trong 2 nút hoàn thành toàn bộ bên dưới!'
+      key: 'courseOverview',
+      error: wt('courseOverview')
     };
   }
 
@@ -409,26 +410,30 @@ async function markCurrentItemCompleted() {
   }
 
   const courseId = await getCourseId(courseSlug);
-  if (!courseId) return { success: false, error: 'Không lấy được courseId từ API. Coursera có thể đã đổi định dạng API.' };
+  if (!courseId) return { success: false, key: 'unknownError', error: wt('unknownError') };
 
   const userId = await getUserId(courseId);
-  if (!userId) return { success: false, error: 'Không lấy được userId. Hãy đảm bảo đã đăng nhập Coursera.' };
+  if (!userId) return { success: false, key: 'notLoggedIn', error: wt('notLoggedIn') };
 
   console.log(`[CourseraSkip] courseId=${courseId} | userId=${userId}`);
 
   if (itemType === 'lecture') {
     const result = await markLectureCompleted(userId, courseId, courseSlug, itemId);
     const suffix = result.retries ? ` (retry ×${result.retries})` : result.step === 'fallback-PUT' ? ' (fallback)' : '';
-    const finalMsg = result.message || (result.success ? `✅ Video đã hoàn thành!${suffix}` : `❌ ${result.error}`);
-    return { ...result, message: finalMsg, itemType, courseId, userId, itemId };
+    const key = result.success ? 'successLecture' : null;
+    const finalMsg = result.message || (result.success ? `${wt('successLecture')}${suffix}` : (result.error || wt('unknownError')));
+    return { ...result, key, message: finalMsg, itemType, courseId, userId, itemId };
   }
 
   if (itemType === 'supplement') {
     const result = await markSupplementCompleted(userId, courseId, courseSlug, itemId);
-    return { ...result, message: result.success ? `✅ Bài đọc đã hoàn thành!${result.fallback ? ' (fallback)' : ''}` : `❌ ${result.error}`, itemType, courseId, userId, itemId };
+    const suffix = result.fallback ? ' (fallback)' : '';
+    const key = result.success ? 'successSupplement' : null;
+    const finalMsg = result.success ? `${wt('successSupplement')}${suffix}` : (result.error || wt('unknownError'));
+    return { ...result, key, message: finalMsg, itemType, courseId, userId, itemId };
   }
 
-  return { success: false, error: `⚠️ Loại bài "${itemType}" chưa được hỗ trợ hoàn thành tự động.` };
+  return { success: false, key: 'unknownError', error: wt('unknownError') };
 }
 
 // ===== BULK COMPLETION =====
@@ -461,16 +466,16 @@ function notifyProgress(data) {
 async function markAllItemsCompleted() {
   const context = getCourseContext();
   if (!context) {
-    notifyProgress({ status: 'error', code: 'NO_CONTEXT', message: 'Không tìm thấy bài học. Hãy vào trang bài học.' });
+    notifyProgress({ status: 'error', code: 'NO_CONTEXT', key: 'notOnLesson', message: wt('notOnLesson') });
     return;
   }
 
   const { courseSlug } = context;
-  notifyProgress({ status: 'loading', code: 'FETCHING_CURRICULUM', message: 'Đang tải danh sách bài học...' });
+  notifyProgress({ status: 'loading', code: 'FETCHING_CURRICULUM', key: 'fetchingCurriculum', message: wt('fetchingCurriculum') });
 
   const material = await getAllCourseItems(courseSlug);
   if (!material || !material.linked || !material.linked['onDemandCourseMaterialItems.v2']) {
-    notifyProgress({ status: 'error', code: 'FETCH_FAILED', message: 'Không lấy được giáo trình khóa học.' });
+    notifyProgress({ status: 'error', code: 'FETCH_FAILED', key: 'unknownError', message: wt('unknownError') });
     return;
   }
 
@@ -482,24 +487,24 @@ async function markAllItemsCompleted() {
   let completed = 0;
   
   if (total === 0) {
-    notifyProgress({ status: 'error', code: 'NO_ITEMS', message: 'Không tìm thấy video hoặc bài đọc nào!' });
+    notifyProgress({ status: 'error', code: 'NO_ITEMS', key: 'noItemsFound', message: wt('noItemsFound') });
     return;
   }
 
   const courseId = material.elements?.[0]?.id;
   if (!courseId) {
-    notifyProgress({ status: 'error', code: 'NO_COURSE_ID', message: 'Không lấy được ID khóa học.' });
+    notifyProgress({ status: 'error', code: 'NO_COURSE_ID', key: 'unknownError', message: wt('unknownError') });
     return;
   }
 
   const userId = await getUserId(courseId);
   if (!userId) {
-    notifyProgress({ status: 'error', code: 'NO_USER_ID', message: 'Không lấy được User ID. Vui lòng đăng nhập Coursera.' });
+    notifyProgress({ status: 'error', code: 'NO_USER_ID', key: 'notLoggedIn', message: wt('notLoggedIn') });
     return;
   }
 
   const batchSize = 5;
-  notifyProgress({ status: 'starting', current: 0, total, message: `Bắt đầu xử lý ${total} bài học...` });
+  notifyProgress({ status: 'starting', current: 0, total, key: 'startingBulkVR', params: { total }, message: wt('startingBulkVR', { total }) });
 
   let successCount = 0;
   let failedCount = 0;
@@ -528,7 +533,14 @@ async function markAllItemsCompleted() {
     }));
     
     completed = Math.min(completed + batch.length, total);
-    notifyProgress({ status: 'progress', current: completed, total, message: `Đang xử lý: ${completed} / ${total}` });
+    notifyProgress({
+      status: 'progress',
+      current: completed,
+      total,
+      key: 'processingBulkCount',
+      params: { current: completed, total },
+      message: wt('processingBulkCount', { current: completed, total })
+    });
     
     // Tạm nghỉ 2s giữa các batch để tránh bị server Coursera rate limit
     if (completed < total) {
@@ -537,14 +549,16 @@ async function markAllItemsCompleted() {
   }
 
   const status = failedCount === 0 ? 'completed' : (successCount > 0 ? 'partial' : 'error');
-  const finalMsg = failedCount === 0
-    ? `✅ Hoàn thành toàn bộ ${total} bài học Video & Reading!`
-    : `⚠️ Đã xử lý: ${successCount} thành công, ${failedCount} thất bại.`;
+  const finalKey = failedCount === 0 ? 'completedBulk' : 'partialBulk';
+  const finalParams = failedCount === 0 ? { total } : { success: successCount, failed: failedCount };
+  const finalMsg = wt(finalKey, finalParams);
 
   notifyProgress({
     status,
     current: total,
     total,
+    key: finalKey,
+    params: finalParams,
     message: finalMsg,
     failedCount,
     successCount
@@ -639,16 +653,16 @@ async function postDiscussionAnswerWithRetry(courseId, questionId, csrfToken, an
 async function markAllDiscussionsCompleted() {
   const context = getCourseContext();
   if (!context || !context.courseSlug) {
-    notifyProgress({ status: 'error', code: 'NO_CONTEXT', message: 'Không nhận diện được khóa học. Hãy mở trang khóa học Coursera.' });
+    notifyProgress({ status: 'error', code: 'NO_CONTEXT', key: 'notOnLesson', message: wt('notOnLesson') });
     return;
   }
 
   const { courseSlug } = context;
-  notifyProgress({ status: 'loading', code: 'FETCHING_CURRICULUM', message: 'Đang tải danh sách bài thảo luận...' });
+  notifyProgress({ status: 'loading', code: 'FETCHING_CURRICULUM', key: 'fetchingDiscussions', message: wt('fetchingDiscussions') });
 
   const material = await getAllCourseItems(courseSlug);
   if (!material || !material.linked || !material.linked['onDemandCourseMaterialItems.v2']) {
-    notifyProgress({ status: 'error', code: 'FETCH_FAILED', message: 'Không lấy được giáo trình khóa học.' });
+    notifyProgress({ status: 'error', code: 'FETCH_FAILED', key: 'unknownError', message: wt('unknownError') });
     return;
   }
 
@@ -659,24 +673,24 @@ async function markAllDiscussionsCompleted() {
 
   const total = discussionItems.length;
   if (total === 0) {
-    notifyProgress({ status: 'error', code: 'NO_ITEMS', message: 'Khóa học này không có bài thảo luận (Discussion Prompt) nào!' });
+    notifyProgress({ status: 'error', code: 'NO_ITEMS', key: 'noItemsFound', message: wt('noItemsFound') });
     return;
   }
 
   const courseId = material.elements?.[0]?.id || await getCourseId(courseSlug);
   if (!courseId) {
-    notifyProgress({ status: 'error', code: 'NO_COURSE_ID', message: 'Không lấy được ID khóa học.' });
+    notifyProgress({ status: 'error', code: 'NO_COURSE_ID', key: 'unknownError', message: wt('unknownError') });
     return;
   }
 
   const userId = await getUserId(courseId);
   if (!userId) {
-    notifyProgress({ status: 'error', code: 'NO_USER_ID', message: 'Không lấy được User ID. Vui lòng đăng nhập Coursera.' });
+    notifyProgress({ status: 'error', code: 'NO_USER_ID', key: 'notLoggedIn', message: wt('notLoggedIn') });
     return;
   }
 
   const csrfToken = getCsrfToken();
-  notifyProgress({ status: 'starting', current: 0, total, message: `Bắt đầu xử lý ${total} bài thảo luận...` });
+  notifyProgress({ status: 'starting', current: 0, total, key: 'startingBulkDisc', params: { total }, message: wt('startingBulkDisc', { total }) });
 
   let completed = 0;
   let successCount = 0;
@@ -748,7 +762,9 @@ async function markAllDiscussionsCompleted() {
       status: 'progress',
       current: completed,
       total,
-      message: `Đang xử lý thảo luận: ${completed} / ${total} (${item.name || 'Discussion'})`
+      key: 'processingBulkCount',
+      params: { current: completed, total },
+      message: wt('processingBulkCount', { current: completed, total })
     });
 
     // Nghỉ 1.8s giữa các bài để tôn trọng rate limit của Coursera
@@ -758,16 +774,16 @@ async function markAllDiscussionsCompleted() {
   }
 
   const status = failedCount === 0 ? 'completed' : (successCount > 0 ? 'partial' : 'error');
-  const finalMsg = failedCount === 0
-    ? (skippedDuplicate > 0
-        ? `✅ Hoàn thành toàn bộ ${total} bài thảo luận (${skippedDuplicate} bài đã trả lời từ trước)!`
-        : `✅ Hoàn thành toàn bộ ${total} bài thảo luận trong khóa học!`)
-    : `⚠️ Đã xử lý: ${successCount} thành công (${skippedDuplicate} bài đã có sẵn), ${failedCount} thất bại.`;
+  const finalKey = failedCount === 0 ? 'completedBulkDisc' : 'partialBulk';
+  const finalParams = failedCount === 0 ? { total } : { success: successCount, failed: failedCount };
+  const finalMsg = wt(finalKey, finalParams);
 
   notifyProgress({
     status,
     current: total,
     total,
+    key: finalKey,
+    params: finalParams,
     message: finalMsg,
     failedCount,
     successCount,
@@ -1014,13 +1030,15 @@ async function autoGradePeerReview() {
       return {
         success: true,
         submitted: false,
-        message: 'ℹ️ Các tiêu chí chấm bài đã được chọn trước đó. Bạn có thể cuộn xuống kiểm tra và bấm nộp.'
+        key: 'peerAlreadySelected',
+        message: wt('peerAlreadySelected')
       };
     }
     return {
       success: false,
       submitted: false,
-      error: 'Không tìm thấy hoặc không thể điền tiêu chí chấm bài nào. Hãy đảm bảo form chấm bài của bạn học đã tải xong.'
+      key: 'peerFormNotFound',
+      error: wt('peerFormNotFound')
     };
   }
 
@@ -1053,9 +1071,8 @@ async function autoGradePeerReview() {
   return {
     success: true,
     submitted: false,
-    message: submitBtn
-      ? `✅ Đã chọn ${optionsSelected} tiêu chí và điền ${textareasFilled} nhận xét! Kiểm tra lại và bấm nút nộp (đã highlight màu tím) nhé.`
-      : `✅ Đã chọn ${optionsSelected} tiêu chí và điền ${textareasFilled} nhận xét! Bạn có thể cuộn xuống để kiểm tra và nộp bài.`
+    key: 'peerSuccess',
+    message: wt('peerSuccess')
   };
 }
 
@@ -1224,7 +1241,8 @@ async function postDiscussionViaDOM(text) {
       return {
         success: true,
         submitted: true,
-        message: '✅ Đã điền câu trả lời và tự động bấm Reply thành công!'
+        key: 'discReplySuccess',
+        message: wt('discReplySuccess')
       };
     }
 
@@ -1246,14 +1264,16 @@ async function postDiscussionViaDOM(text) {
     return {
       success: true,
       submitted: false,
-      message: '✅ Đã điền câu trả lời! Nút Reply đang chờ sẵn (viền xanh), bạn hãy kiểm tra và bấm Reply nhé.'
+      key: 'discReplyReady',
+      message: wt('discReplyReady')
     };
   }
 
   return {
     success: true,
     submitted: false,
-    message: '✅ Đã điền câu trả lời vào khung soạn thảo!'
+    key: 'discReplyReady',
+    message: wt('discReplyReady')
   };
 }
 
@@ -1338,7 +1358,8 @@ async function autoPostDiscussion() {
           success: true,
           submitted: false,
           skippedDuplicate: true,
-          message: 'ℹ️ Bạn đã đăng câu trả lời cho bài thảo luận này từ trước rồi!',
+          key: 'discAlreadyAnswered',
+          message: wt('discAlreadyAnswered'),
         };
       }
 
@@ -1348,7 +1369,8 @@ async function autoPostDiscussion() {
         return {
           success: true,
           submitted: true,
-          message: '✅ Đã đăng câu trả lời thảo luận thành công! Coursera sẽ tự cập nhật tiến độ.',
+          key: 'discReplySuccess',
+          message: wt('discReplySuccess'),
         };
       }
 
@@ -1778,10 +1800,10 @@ async function autoAnswerGradedQuiz() {
   }
 
   if (!apiKey || apiKey.trim() === '') {
-    const provName = AI_PROVIDERS[activeProvider]?.name || activeProvider.toUpperCase();
     return {
       success: false,
-      error: `Chưa nhập API Key cho ${provName}. Bấm ⚙️ trong widget để nhập key (Gemini, GPT hoặc Groq).`
+      key: 'quizNoApiKey',
+      error: wt('quizNoApiKey')
     };
   }
 
@@ -1790,7 +1812,8 @@ async function autoAnswerGradedQuiz() {
   if (questions.length === 0) {
     return {
       success: false,
-      error: 'Không tìm thấy câu hỏi nào trong trang. Hãy chắc chắn bạn đang ở trang làm bài quiz (có câu hỏi hiển thị).'
+      key: 'quizNoQuestions',
+      error: wt('quizNoQuestions')
     };
   }
 
@@ -1803,24 +1826,22 @@ async function autoAnswerGradedQuiz() {
   try {
     answersFromAI = await callAiWithRetry(activeProvider, apiKey, prompt);
   } catch (e) {
-    return { success: false, error: `Lỗi ${provDisplayName} API: ${e.message}` };
+    return { success: false, error: `${provDisplayName} API: ${e.message}` };
   }
 
   if (!answersFromAI || answersFromAI.length === 0) {
-    return { success: false, error: `${provDisplayName} không trả về đáp án. Thử lại.` };
+    return { success: false, error: `${provDisplayName} API: no answer returned.` };
   }
 
   // 4. Fill answers into DOM
   const { filled, submitHighlighted } = fillQuizAnswers(questions, answersFromAI);
 
-  const submitNote = submitHighlighted
-    ? 'Nút Submit đã được highlight — hãy kiểm tra lại và bấm Submit.'
-    : 'Lưu ý: không tìm thấy nút Submit — hãy tự tìm và bấm.';
-
   return {
     success: true,
     submitted: false, // never auto-submit
-    message: `✅ AI (${provDisplayName}) đã điền ${filled} lựa chọn cho ${questions.length} câu hỏi. ${submitNote}`,
+    key: 'quizSuccess',
+    params: { filled },
+    message: wt('quizSuccess', { filled }),
     filled,
     totalQuestions: questions.length,
   };
@@ -1834,7 +1855,6 @@ const AI_PROVIDERS = {
   gemini: {
     id: 'gemini',
     name: 'Gemini',
-    icon: '♊',
     placeholder: 'AIzaSy...',
     labelVi: 'Gemini API Key',
     labelEn: 'Gemini API Key',
@@ -1845,7 +1865,6 @@ const AI_PROVIDERS = {
   openai: {
     id: 'openai',
     name: 'OpenAI (GPT)',
-    icon: '🟢',
     placeholder: 'sk-proj-... / sk-...',
     labelVi: 'OpenAI (GPT) API Key',
     labelEn: 'OpenAI (GPT) API Key',
@@ -1856,7 +1875,6 @@ const AI_PROVIDERS = {
   groq: {
     id: 'groq',
     name: 'Groq',
-    icon: '⚡',
     placeholder: 'gsk_...',
     labelVi: 'Groq API Key',
     labelEn: 'Groq API Key',
@@ -1868,10 +1886,17 @@ const AI_PROVIDERS = {
 
 let currentWidgetProvider = 'gemini';
 // =========================================================================
+const STORE_REVIEW_URL = 'https://chromewebstore.google.com/detail/coursera-skip-video-read/jjbgneddmjkolgmpamecbhfgjgdiajlf/reviews';
 
 const WIDGET_I18N = {
   vi: {
     langBadge: 'VI',
+    bulkLabel: 'Thao tác hàng loạt',
+    confirmTitle: 'Chạy trên toàn bộ khóa học?',
+    confirmBulkVR: 'Thao tác này đánh dấu hoàn thành mọi video và bài đọc trong khóa học trên tài khoản Coursera của bạn. Không thể hoàn tác từ tiện ích.',
+    confirmBulkDisc: 'Thao tác này đăng phản hồi thảo luận trên toàn khóa học bằng tài khoản của bạn. Không thể hoàn tác các phản hồi đã đăng từ tiện ích.',
+    btnCancel: 'Hủy',
+    btnContinue: 'Tiếp tục',
     detected: 'ĐÃ NHẬN DIỆN BÀI HỌC',
     courseOverview: 'Trang tổng quan khóa học',
     typeLabel: 'Loại bài',
@@ -1881,29 +1906,77 @@ const WIDGET_I18N = {
     btnPeer: 'Tự động chấm bài bạn học',
     btnQuiz: 'AI Làm Quiz Tự Động',
     processingCurrent: 'Đang xử lý...',
+    processingReview: 'Đang tự động chấm bài...',
+    processingDiscussion: 'Đang đăng câu trả lời...',
     processingBulk: 'Đang khởi động...',
-    rateToastMsg: 'Tiết kiệm thời gian? Đánh giá 5★ trên Cửa hàng nhé!',
+    fetchingCurriculum: 'Đang tải danh sách bài học...',
+    fetchingDiscussions: 'Đang tải danh sách bài thảo luận...',
+    startingBulkVR: 'Bắt đầu xử lý {total} bài học...',
+    startingBulkDisc: 'Bắt đầu xử lý {total} bài thảo luận...',
+    processingBulkCount: 'Đang xử lý: {current} / {total}',
+    completedBulk: 'Hoàn thành toàn bộ {total} bài học Video & Reading!',
+    completedBulkDisc: 'Hoàn thành toàn bộ {total} bài thảo luận!',
+    partialBulk: 'Đã xử lý: {success} thành công, {failed} thất bại.',
+    partialBulkAlert: 'Một số bài chưa thể hoàn thành.',
+    successCurrent: 'Đã hoàn thành bài học.',
+    successLecture: 'Video đã hoàn thành.',
+    successSupplement: 'Bài đọc đã hoàn thành.',
+    successReview: 'Đã chấm xong bài bạn học.',
+    successDiscussion: 'Đã đăng thảo luận thành công.',
+    ratingLabel: 'Hoàn thành bài học',
+    ratingLabelBulk: 'Hoàn thành {total} bài học',
+    ratingLabelMilestone: 'Cột mốc {total} bài học',
+    ratingMsg: 'Tiết kiệm thời gian cho bạn? Hãy để lại đánh giá trên Cửa hàng nhé.',
+    ratingMsgBulk: 'Tiết kiệm ~{mins} phút học tập. Nếu thấy tiện ích hữu ích, hãy để lại đánh giá trên Cửa hàng nhé!',
+    ratingMsgMilestone: 'Bạn đã hoàn thành {total} bài học cùng tiện ích. Hãy để lại đánh giá trên Cửa hàng nhé!',
+    rateToastMsg: 'Tiết kiệm thời gian cho bạn? Hãy để lại đánh giá trên Cửa hàng nhé.',
+    rateToastMsgBulk: 'Tiết kiệm ~{mins} phút học tập. Nếu thấy tiện ích hữu ích, hãy để lại đánh giá trên Cửa hàng nhé!',
+    rateToastMsgMilestone: 'Bạn đã hoàn thành {total} bài học cùng tiện ích. Hãy để lại đánh giá trên Cửa hàng nhé!',
+    btnRate: 'Đánh giá trên Cửa hàng',
+    btnAlreadyRated: 'Đã đánh giá',
+    btnReloadCoursera: 'Tải lại trang',
+    ratingThankYou: 'Cảm ơn bạn đã luôn ủng hộ tiện ích!',
     settingsTitle: 'Cài đặt AI (Gemini / GPT / Groq)',
-    apiKeyLabel: 'Gemini API Key',
+    apiKeyLabel: 'API Key',
     apiKeySave: 'Lưu',
-    apiKeySaved: '✅ Đã lưu API key thành công!',
+    apiKeySaved: 'Đã lưu API key thành công!',
     apiKeyPlaceholder: 'AIza...',
-    apiKeyHint: 'Lấy key miễn phí tại Google AI Studio (aistudio.google.com)',
+    apiKeyHint: 'Chọn nhà cung cấp và nhập API key tương ứng.',
     settingsClose: 'Đóng',
     apiKeyActive: 'Đã lưu key',
     apiKeyNone: 'Chưa có key',
     apiKeyEnterNew: 'Dán key mới để thay đổi...',
-    apiKeyDefaultPlaceholder: 'Dán Gemini API Key (AIzaSy...)',
+    apiKeyDefaultPlaceholder: 'Dán API Key...',
     apiKeyDelete: 'Xóa key',
-    apiKeyDeleted: '🗑️ Đã xóa API key!',
+    apiKeyDeleted: 'Đã xóa API key!',
     apiKeyEmptyErr: 'Vui lòng nhập API key.',
     apiKeyPromptPaste: 'Vui lòng dán key mới vào ô nhập để thay đổi.',
     apiKeyPaste: 'Dán',
-    apiKeyPasted: '📋 Đã dán key từ Clipboard!',
-    apiKeyPromptInput: 'Dán Gemini API Key (AIzaSy...) của bạn vào đây:',
+    apiKeyPasted: 'Đã dán key từ Clipboard!',
+    apiKeyPromptInput: 'Dán API Key của bạn vào đây:',
+    notOnLesson: 'Vui lòng mở trang bài học Coursera trước.',
+    notEnrolled: 'Không có quyền. Hãy chắc chắn bạn đã đăng ký khóa học.',
+    notLoggedIn: 'Vui lòng đăng nhập Coursera trước.',
+    noItemsFound: 'Không tìm thấy bài học phù hợp trong khóa học.',
+    unknownError: 'Đã xảy ra lỗi. Kiểm tra Console (F12).',
+    peerAlreadySelected: 'Các tiêu chí đã được chọn trước đó. Bạn có thể kiểm tra và bấm nộp.',
+    peerFormNotFound: 'Không tìm thấy form chấm bài. Hãy chắc chắn form đã tải xong.',
+    peerSuccess: 'Đã chọn tiêu chí và điền nhận xét! Hãy kiểm tra và bấm nộp bài.',
+    discAlreadyAnswered: 'Bạn đã đăng câu trả lời cho bài thảo luận này từ trước rồi!',
+    discReplySuccess: 'Đã đăng câu trả lời thảo luận thành công!',
+    discReplyReady: 'Đã điền câu trả lời. Hãy kiểm tra và bấm Reply nhé.',
+    quizNoApiKey: 'Chưa nhập API Key. Bấm Cài đặt AI để thêm key.',
+    quizNoQuestions: 'Không tìm thấy câu hỏi quiz nào trên trang.',
+    quizSuccess: 'AI đã điền {filled} câu hỏi. Hãy kiểm tra lại và bấm nộp bài.',
   },
   en: {
     langBadge: 'EN',
+    bulkLabel: 'Bulk actions',
+    confirmTitle: 'Run on the whole course?',
+    confirmBulkVR: 'This marks every video and reading in this course as completed on your Coursera account. It cannot be undone from here.',
+    confirmBulkDisc: 'This posts discussion replies across the whole course using your account. Posted replies cannot be undone from here.',
+    btnCancel: 'Cancel',
+    btnContinue: 'Continue',
     detected: 'LESSON DETECTED',
     courseOverview: 'Course Overview',
     typeLabel: 'Type',
@@ -1913,26 +1986,68 @@ const WIDGET_I18N = {
     btnPeer: 'Auto Grade Peer Review',
     btnQuiz: 'AI Auto-Answer Quiz',
     processingCurrent: 'Completing...',
+    processingReview: 'Grading peer review...',
+    processingDiscussion: 'Posting discussion...',
     processingBulk: 'Starting...',
-    rateToastMsg: 'Saved your time? Rate 5★ on Chrome Web Store!',
+    fetchingCurriculum: 'Loading course lessons...',
+    fetchingDiscussions: 'Loading discussions...',
+    startingBulkVR: 'Processing {total} lessons...',
+    startingBulkDisc: 'Processing {total} discussions...',
+    processingBulkCount: 'Processing: {current} / {total}',
+    completedBulk: 'Completed all {total} lessons!',
+    completedBulkDisc: 'Completed all {total} discussions!',
+    partialBulk: 'Processed: {success} succeeded, {failed} failed.',
+    partialBulkAlert: 'Some lessons could not be completed.',
+    successCurrent: 'Lesson completed successfully.',
+    successLecture: 'Video completed successfully.',
+    successSupplement: 'Reading completed successfully.',
+    successReview: 'Peer review graded successfully.',
+    successDiscussion: 'Discussion posted successfully.',
+    ratingLabel: 'Lesson Completed',
+    ratingLabelBulk: 'Completed {total} Lessons',
+    ratingLabelMilestone: 'Milestone: {total} Lessons',
+    ratingMsg: 'Saved your time? Consider leaving a review on Chrome Web Store.',
+    ratingMsgBulk: 'Saved ~{mins} mins. If you find this tool helpful, please leave a quick review on the Store!',
+    ratingMsgMilestone: 'You have completed {total} lessons with this tool. Please rate us on Chrome Web Store!',
+    rateToastMsg: 'Saved your time? Consider leaving a review on Chrome Web Store.',
+    rateToastMsgBulk: 'Saved ~{mins} mins. If you find this tool helpful, please leave a quick review on the Store!',
+    rateToastMsgMilestone: 'You have completed {total} lessons with this tool. Please rate us on Chrome Web Store!',
+    btnRate: 'Rate on Store',
+    btnAlreadyRated: 'Already Rated',
+    btnReloadCoursera: 'Reload Page',
+    ratingThankYou: 'Thank you for your support!',
     settingsTitle: 'AI Settings (Gemini / GPT / Groq)',
-    apiKeyLabel: 'Gemini API Key',
+    apiKeyLabel: 'API Key',
     apiKeySave: 'Save',
-    apiKeySaved: '✅ API key saved successfully!',
+    apiKeySaved: 'API key saved successfully!',
     apiKeyPlaceholder: 'AIza...',
-    apiKeyHint: 'Get a free key at Google AI Studio (aistudio.google.com)',
+    apiKeyHint: 'Select provider and enter your API key.',
     settingsClose: 'Close',
     apiKeyActive: 'Key saved',
     apiKeyNone: 'No key saved',
     apiKeyEnterNew: 'Paste new key to replace...',
-    apiKeyDefaultPlaceholder: 'Paste Gemini API Key (AIzaSy...)',
+    apiKeyDefaultPlaceholder: 'Paste API Key...',
     apiKeyDelete: 'Delete key',
-    apiKeyDeleted: '🗑️ API key deleted!',
+    apiKeyDeleted: 'API key deleted!',
     apiKeyEmptyErr: 'Please enter an API key.',
     apiKeyPromptPaste: 'Please paste a new key into the box to replace.',
     apiKeyPaste: 'Paste',
-    apiKeyPasted: '📋 Key pasted from clipboard!',
-    apiKeyPromptInput: 'Paste your Gemini API Key (AIzaSy...) here:',
+    apiKeyPasted: 'Key pasted from clipboard!',
+    apiKeyPromptInput: 'Paste your API Key here:',
+    notOnLesson: 'Please open a Coursera lesson page first.',
+    notEnrolled: 'Permission denied. Make sure you are enrolled in the course.',
+    notLoggedIn: 'Please sign in to Coursera first.',
+    noItemsFound: 'No eligible lessons found in this course.',
+    unknownError: 'An error occurred. Check Console (F12).',
+    peerAlreadySelected: 'Grading criteria already selected. Review and submit.',
+    peerFormNotFound: 'Review form not found. Make sure review form is loaded.',
+    peerSuccess: 'Grading criteria and feedback filled. Please review and submit.',
+    discAlreadyAnswered: 'You have already answered this discussion prompt.',
+    discReplySuccess: 'Discussion reply posted successfully!',
+    discReplyReady: 'Discussion answer filled. Please review and click Reply.',
+    quizNoApiKey: 'API key not configured. Open AI Settings to enter your key.',
+    quizNoQuestions: 'No quiz questions found on this page.',
+    quizSuccess: 'AI answered {filled} questions. Please review and submit.',
   }
 };
 
@@ -1940,9 +2055,36 @@ let widgetShadow = null;
 let currentWidgetLang = localStorage.getItem('coursera_skip_lang') || (navigator.language?.startsWith('vi') ? 'vi' : 'en');
 let isWidgetProcessing = false;
 
-function wt(key) {
+// Sync language from chrome.storage.local across extension & widget
+try {
+  chrome.storage.local.get('coursera_skip_lang', (res) => {
+    if (res && res.coursera_skip_lang) {
+      currentWidgetLang = res.coursera_skip_lang;
+      localStorage.setItem('coursera_skip_lang', currentWidgetLang);
+      if (typeof updateWidgetLanguageUI === 'function') {
+        updateWidgetLanguageUI();
+      }
+    }
+  });
+
+  chrome.storage.onChanged.addListener((changes, area) => {
+    if (area === 'local' && changes.coursera_skip_lang) {
+      currentWidgetLang = changes.coursera_skip_lang.newValue;
+      localStorage.setItem('coursera_skip_lang', currentWidgetLang);
+      if (typeof updateWidgetLanguageUI === 'function') {
+        updateWidgetLanguageUI();
+      }
+    }
+  });
+} catch (_) {}
+
+function wt(key, params = {}) {
   const dict = WIDGET_I18N[currentWidgetLang] || WIDGET_I18N.vi;
-  return dict[key] || WIDGET_I18N.vi[key] || key;
+  let text = dict[key] || WIDGET_I18N.vi[key] || key;
+  for (const [k, v] of Object.entries(params)) {
+    text = text.replace(new RegExp(`\\{${k}\\}`, 'g'), v);
+  }
+  return text;
 }
 
 function updateFloatingWidgetProgress(data) {
@@ -1970,38 +2112,168 @@ function updateFloatingWidgetProgress(data) {
 
     pctEl.textContent = `${pct}%`;
     fillEl.style.width = `${pct}%`;
-    msgEl.textContent = data.message || `Đang xử lý: ${current} / ${total}`;
+    msgEl.textContent = (data.key && wt(data.key, data.params)) || data.message || wt('processingBulkCount', { current, total });
   } else if (data.status === 'completed') {
     wrap.style.display = 'block';
     fillEl.style.width = '100%';
     pctEl.textContent = '100%';
-    msgEl.textContent = data.message || '✅ Hoàn thành!';
+    msgEl.textContent = (data.key && wt(data.key, data.params)) || data.message || wt('completedBulk', { total: data.total || 1 });
     isWidgetProcessing = false;
     if (vrBtn) { vrBtn.disabled = false; vrBtn.classList.remove('loading'); }
     if (discBtn) { discBtn.disabled = false; discBtn.classList.remove('loading'); }
     if (currentBtn) { currentBtn.disabled = false; currentBtn.classList.remove('loading'); }
 
-    setTimeout(() => {
-      window.location.reload();
-    }, 1800);
+    const total = data.total || 1;
+    try {
+      chrome.storage.local.get('coursera_completed_count').then((res) => {
+        const newCount = (res?.coursera_completed_count || 0) + (parseInt(total, 10) || 1);
+        chrome.storage.local.set({ coursera_completed_count: newCount });
+      });
+    } catch (_) {}
+
+    isRatingDismissedOrRatedWidget().then((isRated) => {
+      if (!isRated) {
+        showCelebrationPromptWidget({ totalLessons: parseInt(total, 10) || 1, isBulk: true });
+      } else {
+        setTimeout(() => {
+          window.location.reload();
+        }, 1800);
+      }
+    });
   } else if (data.status === 'partial') {
     wrap.style.display = 'block';
     fillEl.style.width = '100%';
     pctEl.textContent = '100%';
-    msgEl.textContent = data.message || '⚠️ Hoàn thành một phần!';
+    msgEl.textContent = (data.key && wt(data.key, data.params)) || data.message || wt('partialBulk', data.params || {});
     isWidgetProcessing = false;
     if (vrBtn) { vrBtn.disabled = false; vrBtn.classList.remove('loading'); }
     if (discBtn) { discBtn.disabled = false; discBtn.classList.remove('loading'); }
     if (currentBtn) { currentBtn.disabled = false; currentBtn.classList.remove('loading'); }
-    showWidgetAlert('warning', data.message || 'Một số bài chưa thể hoàn thành.');
+    showWidgetAlert('warning', (data.key && wt(data.key, data.params)) || data.message || wt('partialBulkAlert'));
   } else if (data.status === 'error') {
     wrap.style.display = 'none';
     isWidgetProcessing = false;
     if (vrBtn) { vrBtn.disabled = false; vrBtn.classList.remove('loading'); }
     if (discBtn) { discBtn.disabled = false; discBtn.classList.remove('loading'); }
     if (currentBtn) { currentBtn.disabled = false; currentBtn.classList.remove('loading'); }
-    showWidgetAlert('error', data.message || 'Đã xảy ra lỗi.');
+    showWidgetAlert('error', (data.key && wt(data.key, data.params)) || data.message || wt('unknownError'));
   }
+}
+
+async function isRatingDismissedOrRatedWidget() {
+  if (localStorage.getItem('coursera_has_rated') === 'true') {
+    return true;
+  }
+  try {
+    const data = await chrome.storage.local.get(['coursera_has_rated', 'coursera_remind_until']);
+    if (data.coursera_has_rated === true) {
+      return true;
+    }
+    if (data.coursera_remind_until && Date.now() < data.coursera_remind_until) {
+      return true;
+    }
+  } catch (e) {
+    console.warn('[Widget] Storage check failed:', e);
+  }
+  return false;
+}
+
+async function markAsRatedWidget() {
+  localStorage.setItem('coursera_has_rated', 'true');
+  try {
+    await chrome.storage.local.set({ coursera_has_rated: true });
+  } catch (e) {
+    console.warn('[Widget] Storage save failed:', e);
+  }
+}
+
+async function handleWidgetAlreadyRated() {
+  await markAsRatedWidget();
+  if (!widgetShadow) return;
+  const msgEl = widgetShadow.getElementById('cs-rating-msg');
+  if (msgEl) msgEl.textContent = wt('ratingThankYou');
+  const rateBtn = widgetShadow.getElementById('cs-btn-rate-store');
+  if (rateBtn) rateBtn.style.display = 'none';
+  const secActions = widgetShadow.querySelector('.cs-rating-secondary-actions');
+  if (secActions) secActions.style.display = 'none';
+  setTimeout(() => {
+    const toast = widgetShadow.getElementById('cs-rating-toast');
+    if (toast) toast.style.display = 'none';
+  }, 1400);
+}
+
+async function handleWidgetCloseRating() {
+  if (!widgetShadow) return;
+  const toast = widgetShadow.getElementById('cs-rating-toast');
+  if (toast) toast.style.display = 'none';
+  const remindUntil = Date.now() + 7 * 24 * 60 * 60 * 1000;
+  try {
+    await chrome.storage.local.set({ coursera_remind_until: remindUntil });
+  } catch (e) {}
+}
+
+async function handleWidgetReloadCoursera() {
+  window.location.reload();
+}
+
+async function openWidgetReviewPage() {
+  await markAsRatedWidget();
+  if (widgetShadow) {
+    const toast = widgetShadow.getElementById('cs-rating-toast');
+    if (toast) toast.style.display = 'none';
+  }
+  window.open(STORE_REVIEW_URL, '_blank');
+}
+
+async function recordSingleLessonCompletedWidget() {
+  try {
+    const data = await chrome.storage.local.get('coursera_completed_count');
+    const newCount = (data.coursera_completed_count || 0) + 1;
+    await chrome.storage.local.set({ coursera_completed_count: newCount });
+    const isDismissed = await isRatingDismissedOrRatedWidget();
+    if (!isDismissed && (newCount === 5 || newCount === 25 || newCount === 50)) {
+      showCelebrationPromptWidget({ totalLessons: newCount, isMilestone: true });
+      return true;
+    }
+  } catch (e) {}
+  return false;
+}
+
+async function showCelebrationPromptWidget(opts = {}) {
+  const isDismissed = await isRatingDismissedOrRatedWidget();
+  if (isDismissed) return;
+  if (!widgetShadow) return;
+
+  const toast = widgetShadow.getElementById('cs-rating-toast');
+  if (!toast) return;
+
+  const labelEl = widgetShadow.getElementById('cs-rating-label');
+  const msgEl = widgetShadow.getElementById('cs-rating-msg');
+  const reloadBtn = widgetShadow.getElementById('cs-btn-reload-coursera');
+  const rateBtn = widgetShadow.getElementById('cs-btn-rate-store');
+  const secActions = widgetShadow.querySelector('.cs-rating-secondary-actions');
+
+  if (rateBtn) rateBtn.style.display = 'flex';
+  if (secActions) secActions.style.display = 'flex';
+
+  if (opts.isBulk) {
+    const total = opts.totalLessons || 1;
+    const mins = Math.max(15, total * 5);
+    if (labelEl) labelEl.textContent = wt('ratingLabelBulk', { total });
+    if (msgEl) msgEl.textContent = wt('rateToastMsgBulk', { mins });
+    if (reloadBtn) reloadBtn.style.display = 'inline-flex';
+  } else if (opts.isMilestone) {
+    const total = opts.totalLessons || 5;
+    if (labelEl) labelEl.textContent = wt('ratingLabelMilestone', { total });
+    if (msgEl) msgEl.textContent = wt('rateToastMsgMilestone', { total });
+    if (reloadBtn) reloadBtn.style.display = 'inline-flex';
+  } else {
+    if (labelEl) labelEl.textContent = wt('ratingLabel');
+    if (msgEl) msgEl.textContent = wt('rateToastMsg');
+    if (reloadBtn) reloadBtn.style.display = 'inline-flex';
+  }
+
+  toast.style.display = 'flex';
 }
 
 function showWidgetAlert(type, message) {
@@ -2043,21 +2315,21 @@ function updateWidgetContext() {
   }
 
   const typeConfigMap = {
-    course: { icon: '🎓', en: 'Course Overview', vi: 'Trang khóa học' },
-    lecture: { icon: '🎬', en: 'Video Lecture', vi: 'Bài giảng Video' },
-    supplement: { icon: '📖', en: 'Reading Material', vi: 'Tài liệu Đọc' },
-    quiz: { icon: '📝', en: 'Quiz Assessment', vi: 'Bài kiểm tra (Quiz)' },
-    gradedQuiz: { icon: '🤖', en: 'Graded Quiz (AI)', vi: 'Graded Quiz (AI)' },
-    programming: { icon: '💻', en: 'Programming Lab', vi: 'Bài tập Thực hành' },
-    peer: { icon: '👥', en: 'Peer Review', vi: 'Bài tập Chấm chéo' },
-    discussionPrompt: { icon: '💬', en: 'Discussion Prompt', vi: 'Câu hỏi thảo luận' },
-    dialogue: { icon: '💬', en: 'Dialogue', vi: 'Hội thoại (Dialogue)' },
+    course: { en: 'Course Overview', vi: 'Trang khóa học' },
+    lecture: { en: 'Video Lecture', vi: 'Bài giảng Video' },
+    supplement: { en: 'Reading Material', vi: 'Tài liệu Đọc' },
+    quiz: { en: 'Quiz Assessment', vi: 'Bài kiểm tra (Quiz)' },
+    gradedQuiz: { en: 'Graded Quiz (AI)', vi: 'Graded Quiz (AI)' },
+    programming: { en: 'Programming Lab', vi: 'Bài tập Thực hành' },
+    peer: { en: 'Peer Review', vi: 'Bài tập Chấm chéo' },
+    discussionPrompt: { en: 'Discussion Prompt', vi: 'Câu hỏi thảo luận' },
+    dialogue: { en: 'Dialogue', vi: 'Hội thoại (Dialogue)' },
   };
 
   const currentType = ctx.itemType || 'course';
-  const cfg = typeConfigMap[currentType] || { icon: '📄', en: currentType, vi: currentType };
+  const cfg = typeConfigMap[currentType] || { en: currentType, vi: currentType };
 
-  if (typeIconEl) typeIconEl.textContent = cfg.icon;
+  if (typeIconEl) typeIconEl.style.display = 'none';
   if (typeTextEl) typeTextEl.textContent = currentWidgetLang === 'vi' ? cfg.vi : cfg.en;
 
   // Toggle buttons based on item type
@@ -2105,10 +2377,27 @@ function updateWidgetLanguageUI() {
   if (txtBulkDisc) txtBulkDisc.textContent = wt('btnBulkDisc');
   if (txtPeer) txtPeer.textContent = wt('btnPeer');
   if (txtQuiz) txtQuiz.textContent = wt('btnQuiz');
-  if (settingsTitle) settingsTitle.textContent = `⚙️ ${wt('settingsTitle')}`;
+  const setTxt = (id, key) => { const el = widgetShadow.getElementById(id); if (el) el.textContent = wt(key); };
+  setTxt('cs-txt-bulk-label', 'bulkLabel');
+  setTxt('cs-txt-confirm-title', 'confirmTitle');
+  setTxt('cs-txt-confirm-cancel', 'btnCancel');
+  setTxt('cs-txt-confirm-ok', 'btnContinue');
+  if (settingsTitle) settingsTitle.textContent = wt('settingsTitle');
   if (apiKeyLabel) apiKeyLabel.textContent = wt('apiKeyLabel');
   if (apiKeyHint) apiKeyHint.textContent = wt('apiKeyHint');
   if (saveKeyBtnEl) saveKeyBtnEl.textContent = wt('apiKeySave');
+
+  const ratingLabelEl = widgetShadow.getElementById('cs-rating-label');
+  const ratingMsgEl = widgetShadow.getElementById('cs-rating-msg');
+  const rateBtnEl = widgetShadow.getElementById('cs-txt-btn-rate-store');
+  const alreadyRatedEl = widgetShadow.getElementById('cs-txt-btn-already-rated');
+  const reloadCourseraEl = widgetShadow.getElementById('cs-txt-btn-reload-coursera');
+
+  if (ratingLabelEl) ratingLabelEl.textContent = wt('ratingLabel');
+  if (ratingMsgEl) ratingMsgEl.textContent = wt('rateToastMsg');
+  if (rateBtnEl) rateBtnEl.textContent = wt('btnRate');
+  if (alreadyRatedEl) alreadyRatedEl.textContent = wt('btnAlreadyRated');
+  if (reloadCourseraEl) reloadCourseraEl.textContent = wt('btnReloadCoursera');
 
   refreshWidgetApiKeyUI();
   updateWidgetContext();
@@ -2148,7 +2437,7 @@ function refreshWidgetApiKeyUI() {
     const key = keys[currentWidgetProvider] || (currentWidgetProvider === 'gemini' ? (cfg?.apiKey || null) : null);
 
     if (settingsTitle) {
-      settingsTitle.textContent = `⚙️ ${wt('settingsTitle')}`;
+      settingsTitle.textContent = wt('settingsTitle');
     }
     if (apiKeyLabel) {
       apiKeyLabel.textContent = currentWidgetLang === 'vi' ? provInfo.labelVi : provInfo.labelEn;
@@ -2271,9 +2560,16 @@ function initFloatingWidget() {
       box-shadow: 0 10px 25px rgba(99, 102, 241, 0.6);
     }
     .cs-badge-icon {
-      font-size: 22px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
       line-height: 1;
       filter: drop-shadow(0 2px 4px rgba(0,0,0,0.3));
+    }
+    .cs-badge-icon svg {
+      width: 22px;
+      height: 22px;
+      fill: #ffffff;
     }
     .cs-badge-pulse {
       position: absolute;
@@ -2298,6 +2594,8 @@ function initFloatingWidget() {
       border-radius: 16px;
       box-shadow: 0 16px 36px rgba(0, 0, 0, 0.55), 0 0 0 1px rgba(255, 255, 255, 0.05);
       color: #f8fafc;
+      user-select: none;
+      -webkit-user-select: none;
       overflow: hidden;
       display: flex;
       flex-direction: column;
@@ -2330,8 +2628,13 @@ function initFloatingWidget() {
       display: flex;
       align-items: center;
       justify-content: center;
-      font-size: 13px;
       box-shadow: 0 2px 6px rgba(99, 102, 241, 0.4);
+      flex-shrink: 0;
+    }
+    .cs-logo svg {
+      width: 14px;
+      height: 14px;
+      fill: #ffffff;
     }
     .cs-title {
       font-size: 13px;
@@ -2370,12 +2673,17 @@ function initFloatingWidget() {
       display: flex;
       align-items: center;
       justify-content: center;
-      font-size: 14px;
       transition: all 0.2s;
     }
     .cs-icon-btn:hover {
       background: rgba(255, 255, 255, 0.1);
       color: #fff;
+    }
+    .cs-icon-btn svg {
+      display: block;
+      width: 13px;
+      height: 13px;
+      stroke: currentColor;
     }
 
     /* Body */
@@ -2532,6 +2840,51 @@ function initFloatingWidget() {
       box-shadow: 0 4px 12px rgba(236, 72, 153, 0.45);
     }
 
+    .cs-btn-bulk {
+      background: rgba(255, 255, 255, 0.04);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      color: #f1f5f9;
+    }
+    .cs-btn-bulk .cs-btn-icon { color: var(--bulk-accent, #94a3b8); }
+    .cs-btn-bulk:hover:not(:disabled) {
+      background: rgba(255, 255, 255, 0.09);
+      border-color: var(--bulk-accent, rgba(255, 255, 255, 0.2));
+    }
+    .cs-btn-bulk-vr { --bulk-accent: #10b981; }
+    .cs-btn-bulk-disc { --bulk-accent: #38bdf8; }
+    .cs-bulk-label {
+      font-size: 11px;
+      font-weight: 600;
+      color: #64748b;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      margin-top: 4px;
+    }
+    .cs-confirm {
+      display: none;
+      flex-direction: column;
+      gap: 8px;
+      background: rgba(245, 158, 11, 0.08);
+      border: 1px solid rgba(245, 158, 11, 0.35);
+      border-radius: 10px;
+      padding: 10px 12px;
+      animation: csFadeIn 0.2s ease;
+    }
+    .cs-confirm-title { font-size: 12px; font-weight: 700; color: #fbbf24; }
+    .cs-confirm-msg { font-size: 12px; color: #cbd5e1; line-height: 1.4; }
+    .cs-confirm-actions { display: flex; gap: 8px; }
+    .cs-btn-outline {
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      color: #f1f5f9;
+    }
+    .cs-btn-outline:hover:not(:disabled) { background: rgba(255, 255, 255, 0.1); }
+    .cs-btn-confirm { background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%); color: #111827; }
+    button:focus-visible {
+      outline: 2px solid #a5b4fc;
+      outline-offset: 2px;
+    }
+
     /* Progress UI */
     .cs-progress-wrap {
       background: rgba(30, 41, 59, 0.7);
@@ -2562,6 +2915,19 @@ function initFloatingWidget() {
       transition: width 0.3s ease;
     }
 
+    .cs-btn-icon {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+    }
+    .cs-btn-icon svg {
+      display: block;
+      width: 13px;
+      height: 13px;
+      stroke: currentColor;
+    }
+
     /* Spinner */
     .cs-spinner {
       display: none;
@@ -2587,6 +2953,109 @@ function initFloatingWidget() {
     .cs-btn-quiz:hover:not(:disabled) {
       transform: translateY(-1px);
       box-shadow: 0 4px 12px rgba(245, 158, 11, 0.5);
+    }
+
+    /* Celebration & Rating Toast */
+    .cs-rating-toast {
+      background: rgba(15, 23, 42, 0.95);
+      border: 1px solid rgba(234, 179, 8, 0.3);
+      border-radius: 10px;
+      padding: 10px 12px;
+      animation: csFadeIn 0.25s ease;
+      display: flex;
+      flex-direction: column;
+      gap: 7px;
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+      margin-top: 6px;
+    }
+    .cs-rating-top {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .cs-rating-label {
+      font-size: 11px;
+      font-weight: 700;
+      color: #fde047;
+      letter-spacing: 0.02em;
+    }
+    .cs-close-rating-btn {
+      background: transparent;
+      border: none;
+      color: #64748b;
+      cursor: pointer;
+      font-size: 12px;
+      padding: 2px 4px;
+      line-height: 1;
+      border-radius: 4px;
+      transition: color 0.15s;
+    }
+    .cs-close-rating-btn:hover {
+      color: #f1f5f9;
+    }
+    .cs-rating-msg {
+      font-size: 10.5px;
+      color: #94a3b8;
+      line-height: 1.4;
+    }
+    .cs-btn-rate-store {
+      background: #facc15;
+      color: #0f172a;
+      font-weight: 700;
+      padding: 6px 10px;
+      border-radius: 6px;
+      font-size: 11px;
+      border: none;
+      cursor: pointer;
+      text-align: center;
+      transition: all 0.2s ease;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 5px;
+    }
+    .cs-btn-rate-store:hover {
+      background: #fde047;
+      transform: translateY(-1px);
+      box-shadow: 0 4px 12px rgba(250, 204, 21, 0.35);
+    }
+    .cs-rating-secondary-actions {
+      display: flex;
+      gap: 6px;
+      margin-top: 2px;
+    }
+    .cs-btn-subtle {
+      flex: 1;
+      padding: 5px 8px;
+      border-radius: 6px;
+      font-size: 10px;
+      font-weight: 500;
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      background: rgba(255, 255, 255, 0.03);
+      color: #94a3b8;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      text-align: center;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .cs-btn-subtle:hover {
+      background: rgba(255, 255, 255, 0.08);
+      color: #f1f5f9;
+      border-color: rgba(255, 255, 255, 0.16);
+    }
+    .cs-btn-subtle.cs-btn-already-rated:hover {
+      border-color: rgba(34, 197, 94, 0.4);
+      color: #86efac;
+    }
+    .cs-btn-subtle.cs-btn-reload-action {
+      border-color: rgba(59, 130, 246, 0.25);
+      color: #93c5fd;
+    }
+    .cs-btn-subtle.cs-btn-reload-action:hover {
+      border-color: rgba(59, 130, 246, 0.5);
+      color: #bfdbfe;
     }
 
     /* Settings Panel */
@@ -2825,7 +3294,9 @@ function initFloatingWidget() {
   container.innerHTML = `
     <!-- Floating Badge -->
     <div class="cs-badge" id="cs-badge" title="Coursera Skip Tool">
-      <div class="cs-badge-icon">⚡</div>
+      <div class="cs-badge-icon">
+        <svg viewBox="0 0 24 24"><path d="M12 3L1 9l4 2.18v6L12 21l7-3.82v-6l2-1.09V17h2V9L12 3zm6.82 6L12 12.72 5.18 9 12 5.28 18.82 9zM17 15.99l-5 2.73-5-2.73v-3.72L12 15l5-2.73v3.72z"/></svg>
+      </div>
       <span class="cs-badge-pulse"></span>
     </div>
 
@@ -2834,13 +3305,19 @@ function initFloatingWidget() {
       <!-- Header -->
       <div class="cs-header" id="cs-header">
         <div class="cs-brand">
-          <div class="cs-logo">⚡</div>
+          <div class="cs-logo">
+            <svg viewBox="0 0 24 24"><path d="M12 3L1 9l4 2.18v6L12 21l7-3.82v-6l2-1.09V17h2V9L12 3zm6.82 6L12 12.72 5.18 9 12 5.28 18.82 9zM17 15.99l-5 2.73-5-2.73v-3.72L12 15l5-2.73v3.72z"/></svg>
+          </div>
           <span class="cs-title">Coursera Skip</span>
         </div>
         <div class="cs-header-actions">
-          <button class="cs-pill-btn" id="cs-lang-btn" title="Switch Language">VI</button>
-          <button class="cs-icon-btn" id="cs-settings-btn" title="AI Settings">⚙️</button>
-          <button class="cs-icon-btn" id="cs-min-btn" title="Thu nhỏ">─</button>
+          <button class="cs-pill-btn" id="cs-lang-btn" title="Switch Language" aria-label="Switch language">VI</button>
+          <button class="cs-icon-btn" id="cs-settings-btn" title="AI Settings" aria-label="AI Settings">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+          </button>
+          <button class="cs-icon-btn" id="cs-min-btn" title="Thu nhỏ" aria-label="Minimize">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="5" y1="12" x2="19" y2="12"/></svg>
+          </button>
         </div>
       </div>
 
@@ -2858,7 +3335,6 @@ function initFloatingWidget() {
           <div class="cs-meta-row">
             <span class="cs-meta-label" id="cs-meta-type-label">Loại bài</span>
             <span class="cs-type-badge" id="cs-type-badge">
-              <span id="cs-type-icon">🎬</span>
               <span id="cs-type-text">--</span>
             </span>
           </div>
@@ -2867,48 +3343,70 @@ function initFloatingWidget() {
         <!-- Action Buttons -->
         <div class="cs-actions">
           <button class="cs-btn cs-btn-primary" id="cs-btn-current">
-            <span class="cs-btn-icon">⚡</span>
+            <span class="cs-btn-icon">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+            </span>
             <div class="cs-spinner"></div>
             <span class="cs-btn-text" id="cs-txt-current">Hoàn thành bài hiện tại</span>
           </button>
 
           <button class="cs-btn cs-btn-quiz" id="cs-btn-quiz" style="display: none;">
-            <span class="cs-btn-icon">🤖</span>
+            <span class="cs-btn-icon">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2a2 2 0 0 1 2 2v2a2 2 0 0 1-2 2 2 2 0 0 1-2-2V4a2 2 0 0 1 2-2zM4 11a1 1 0 0 1 1-1h14a1 1 0 0 1 1 1v7a3 3 0 0 1-3 3H7a3 3 0 0 1-3-3v-7zm5 3a1.5 1.5 0 1 0 0 3 1.5 1.5 0 0 0 0-3zm6 0a1.5 1.5 0 1 0 0 3 1.5 1.5 0 0 0 0-3z"/></svg>
+            </span>
             <div class="cs-spinner"></div>
             <span class="cs-btn-text" id="cs-txt-quiz">AI Làm Quiz Tự Động</span>
           </button>
 
-          <button class="cs-btn cs-btn-magic" id="cs-btn-bulk-vr">
-            <span class="cs-btn-icon">🚀</span>
+          <button class="cs-btn cs-btn-peer" id="cs-btn-peer" style="display: none;">
+            <span class="cs-btn-icon">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+            </span>
+            <div class="cs-spinner"></div>
+            <span class="cs-btn-text" id="cs-txt-peer">Tự động chấm bài bạn học</span>
+          </button>
+
+          <div class="cs-bulk-label" id="cs-txt-bulk-label">Thao tác hàng loạt</div>
+
+          <button class="cs-btn cs-btn-bulk cs-btn-bulk-vr" id="cs-btn-bulk-vr">
+            <span class="cs-btn-icon">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><polygon points="13 19 22 12 13 5 13 19"/><polygon points="2 19 11 12 2 5 2 19"/></svg>
+            </span>
             <div class="cs-spinner"></div>
             <span class="cs-btn-text" id="cs-txt-bulk-vr">Hoàn thành toàn bộ Video & Reading</span>
           </button>
 
-          <button class="cs-btn cs-btn-discuss" id="cs-btn-bulk-disc">
-            <span class="cs-btn-icon">💬</span>
+          <button class="cs-btn cs-btn-bulk cs-btn-bulk-disc" id="cs-btn-bulk-disc">
+            <span class="cs-btn-icon">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+            </span>
             <div class="cs-spinner"></div>
             <span class="cs-btn-text" id="cs-txt-bulk-disc">Hoàn thành toàn bộ Discussion</span>
           </button>
 
-          <button class="cs-btn cs-btn-peer" id="cs-btn-peer" style="display: none;">
-            <span class="cs-btn-icon">👥</span>
-            <div class="cs-spinner"></div>
-            <span class="cs-btn-text" id="cs-txt-peer">Tự động chấm bài bạn học</span>
-          </button>
+          <div class="cs-confirm" id="cs-bulk-confirm" role="alertdialog" aria-labelledby="cs-txt-confirm-title" aria-describedby="cs-confirm-msg">
+            <div class="cs-confirm-title" id="cs-txt-confirm-title">Chạy trên toàn bộ khóa học?</div>
+            <div class="cs-confirm-msg" id="cs-confirm-msg"></div>
+            <div class="cs-confirm-actions">
+              <button class="cs-btn cs-btn-outline" id="cs-btn-confirm-cancel" type="button"><span id="cs-txt-confirm-cancel">Hủy</span></button>
+              <button class="cs-btn cs-btn-confirm" id="cs-btn-confirm-ok" type="button"><span id="cs-txt-confirm-ok">Tiếp tục</span></button>
+            </div>
+          </div>
+
         </div>
 
         <!-- Settings Panel (hidden by default) -->
         <div class="cs-settings" id="cs-settings" style="display: none;">
           <div class="cs-settings-header">
-            <span class="cs-settings-title" id="cs-settings-title">⚙️ Cài đặt AI (Gemini / GPT / Groq)</span>
+            <span class="cs-settings-title" id="cs-settings-title">Cài đặt AI (Gemini / GPT / Groq)</span>
             <span class="cs-key-status-badge empty" id="cs-key-status-badge">○ Chưa có key</span>
           </div>
 
           <!-- Provider Tabs -->
           <div class="cs-provider-tabs" id="cs-provider-tabs">
-            <button type="button" class="cs-provider-tab active" data-provider="gemini">♊ Gemini</button>
-            <button type="button" class="cs-provider-tab" data-provider="openai">🟢 OpenAI</button>
-            <button type="button" class="cs-provider-tab" data-provider="groq">⚡ Groq</button>
+            <button type="button" class="cs-provider-tab active" data-provider="gemini">Gemini</button>
+            <button type="button" class="cs-provider-tab" data-provider="openai">OpenAI</button>
+            <button type="button" class="cs-provider-tab" data-provider="groq">Groq</button>
           </div>
 
           <div class="cs-input-group">
@@ -2922,13 +3420,13 @@ function initFloatingWidget() {
                 <button type="button" class="cs-clear-input-btn" id="cs-clear-input-btn" title="Xóa ô nhập" style="display: none;">✕</button>
                 <button type="button" class="cs-toggle-eye-btn" id="cs-toggle-eye-btn" title="Hiện/Ẩn key">👁️</button>
               </div>
-              <button type="button" class="cs-paste-key-btn" id="cs-paste-key-btn" title="Dán key từ bộ nhớ tạm">📋 <span id="cs-paste-key-txt">Dán</span></button>
+              <button type="button" class="cs-paste-key-btn" id="cs-paste-key-btn" title="Dán key từ bộ nhớ tạm"><span id="cs-paste-key-txt">Dán</span></button>
               <button type="button" class="cs-save-key-btn" id="cs-save-key-btn">Lưu</button>
             </div>
           </div>
           <div class="cs-settings-actions-row">
             <button type="button" class="cs-btn-danger-outline" id="cs-delete-key-btn" style="display: none;">
-              🗑️ <span id="cs-delete-key-txt">Xóa key</span>
+              <span id="cs-delete-key-txt">Xóa key</span>
             </button>
           </div>
           <p class="cs-settings-hint" id="cs-api-key-hint">Lấy key miễn phí tại Google AI Studio (aistudio.google.com)</p>
@@ -2943,6 +3441,26 @@ function initFloatingWidget() {
           </div>
           <div class="cs-prog-bar-bg">
             <div class="cs-prog-bar-fill" id="cs-prog-bar-fill"></div>
+          </div>
+        </div>
+
+        <!-- Smart Celebration & Rating Prompt -->
+        <div class="cs-rating-toast" id="cs-rating-toast" style="display: none;">
+          <div class="cs-rating-top">
+            <span class="cs-rating-label" id="cs-rating-label">Lesson Completed</span>
+            <button class="cs-close-rating-btn" id="cs-close-rating-btn" title="Close">✕</button>
+          </div>
+          <div class="cs-rating-msg" id="cs-rating-msg">Saved your time? Consider leaving a review on Chrome Web Store.</div>
+          <button class="cs-btn-rate-store" id="cs-btn-rate-store" type="button">
+            <span id="cs-txt-btn-rate-store">Rate on Store</span>
+          </button>
+          <div class="cs-rating-secondary-actions">
+            <button class="cs-btn-subtle cs-btn-already-rated" id="cs-btn-already-rated" type="button">
+              <span id="cs-txt-btn-already-rated">Already Rated</span>
+            </button>
+            <button class="cs-btn-subtle cs-btn-reload-action" id="cs-btn-reload-coursera" type="button" style="display: none;">
+              <span id="cs-txt-btn-reload-coursera">Reload Page</span>
+            </button>
           </div>
         </div>
       </div>
@@ -3017,6 +3535,9 @@ function initFloatingWidget() {
   langBtn.addEventListener('click', () => {
     currentWidgetLang = currentWidgetLang === 'vi' ? 'en' : 'vi';
     localStorage.setItem('coursera_skip_lang', currentWidgetLang);
+    try {
+      chrome.storage.local.set({ coursera_skip_lang: currentWidgetLang });
+    } catch (_) {}
     updateWidgetLanguageUI();
   });
 
@@ -3140,7 +3661,7 @@ function initFloatingWidget() {
       chrome.runtime.sendMessage({ action: 'removeAiKey', provider }, (res) => {
         if (apiKeyInput) apiKeyInput.value = '';
         if (clearInputBtn) clearInputBtn.style.display = 'none';
-        showWidgetAlert('warning', `🗑️ ${wt('apiKeyDeleted')} (${provName})`);
+        showWidgetAlert('warning', `${wt('apiKeyDeleted')} (${provName})`);
         refreshWidgetApiKeyUI();
       });
     });
@@ -3169,10 +3690,10 @@ function initFloatingWidget() {
       if (res && res.ok) {
         apiKeyInput.value = '';
         if (clearInputBtn) clearInputBtn.style.display = 'none';
-        showWidgetAlert('success', `✅ ${wt('apiKeySaved')} (${provName})`);
+        showWidgetAlert('success', `${wt('apiKeySaved')} (${provName})`);
         refreshWidgetApiKeyUI();
       } else {
-        showWidgetAlert('error', 'Không thể lưu API key. Thử lại.');
+        showWidgetAlert('error', wt('unknownError'));
       }
     });
   }
@@ -3229,15 +3750,16 @@ function initFloatingWidget() {
     try {
       const res = await markCurrentItemCompleted();
       if (res && res.success) {
-        showWidgetAlert('success', res.message || '✅ Đã hoàn thành bài học!');
-        if (res.submitted !== false) {
+        showWidgetAlert('success', (res.key && wt(res.key, res.params)) || res.message || wt('successCurrent'));
+        const prompted = await recordSingleLessonCompletedWidget();
+        if (!prompted && res.submitted !== false) {
           setTimeout(() => { window.location.reload(); }, 1800);
         }
       } else {
-        showWidgetAlert('error', res?.error || res?.message || 'Có lỗi xảy ra.');
+        showWidgetAlert('error', (res?.key && wt(res.key, res.params)) || res?.error || res?.message || wt('unknownError'));
       }
     } catch (err) {
-      showWidgetAlert('error', err.message || 'Lỗi không xác định.');
+      showWidgetAlert('error', err.message || wt('unknownError'));
     } finally {
       btnCurrent.classList.remove('loading');
       btnCurrent.disabled = false;
@@ -3254,13 +3776,13 @@ function initFloatingWidget() {
       try {
         const res = await autoAnswerGradedQuiz();
         if (res && res.success) {
-          showWidgetAlert('success', res.message);
+          showWidgetAlert('success', (res.key && wt(res.key, res.params)) || res.message);
           // No reload — user must verify and submit manually
         } else {
-          showWidgetAlert('error', res?.error || 'Có lỗi khi chạy AI Quiz.');
+          showWidgetAlert('error', (res?.key && wt(res.key, res.params)) || res?.error || wt('unknownError'));
         }
       } catch (err) {
-        showWidgetAlert('error', err.message || 'Lỗi không xác định.');
+        showWidgetAlert('error', err.message || wt('unknownError'));
       } finally {
         btnQuiz.classList.remove('loading');
         btnQuiz.disabled = false;
@@ -3269,19 +3791,47 @@ function initFloatingWidget() {
   }
 
   // Action: Hoàn thành toàn bộ Video & Reading
-  btnBulkVR.addEventListener('click', async () => {
+  const bulkConfirmEl = widgetShadow.getElementById('cs-bulk-confirm');
+  const bulkConfirmMsg = widgetShadow.getElementById('cs-confirm-msg');
+  const bulkConfirmed = {};
+  let pendingBulk = null;
+
+  function hideBulkConfirm() {
+    pendingBulk = null;
+    bulkConfirmEl.style.display = 'none';
+  }
+
+  // Bulk actions ask for confirmation once per page load (per action kind).
+  function requestBulk(kind, msgKey, btn, run) {
     if (isWidgetProcessing) return;
-    btnBulkVR.classList.add('loading');
-    btnBulkVR.disabled = true;
-    markAllItemsCompleted();
+    const start = () => {
+      btn.classList.add('loading');
+      btn.disabled = true;
+      run();
+    };
+    if (bulkConfirmed[kind]) return start();
+    pendingBulk = { kind, start };
+    bulkConfirmMsg.textContent = wt(msgKey);
+    bulkConfirmEl.style.display = 'flex';
+    widgetShadow.getElementById('cs-btn-confirm-ok').focus();
+  }
+
+  widgetShadow.getElementById('cs-btn-confirm-cancel').addEventListener('click', hideBulkConfirm);
+  widgetShadow.getElementById('cs-btn-confirm-ok').addEventListener('click', () => {
+    const job = pendingBulk;
+    hideBulkConfirm();
+    if (!job) return;
+    bulkConfirmed[job.kind] = true;
+    job.start();
+  });
+
+  btnBulkVR.addEventListener('click', () => {
+    requestBulk('vr', 'confirmBulkVR', btnBulkVR, markAllItemsCompleted);
   });
 
   // Action: Hoàn thành toàn bộ Discussion
-  btnBulkDisc.addEventListener('click', async () => {
-    if (isWidgetProcessing) return;
-    btnBulkDisc.classList.add('loading');
-    btnBulkDisc.disabled = true;
-    markAllDiscussionsCompleted();
+  btnBulkDisc.addEventListener('click', () => {
+    requestBulk('disc', 'confirmBulkDisc', btnBulkDisc, markAllDiscussionsCompleted);
   });
 
   // Action: Chấm bài Peer Review
@@ -3293,18 +3843,30 @@ function initFloatingWidget() {
       try {
         const res = await autoGradePeerReview();
         if (res && res.success) {
-          showWidgetAlert('success', res.message);
+          showWidgetAlert('success', (res.key && wt(res.key, res.params)) || res.message);
+          recordSingleLessonCompletedWidget();
         } else {
-          showWidgetAlert('error', res?.error || 'Có lỗi khi chấm bài.');
+          showWidgetAlert('error', (res?.key && wt(res.key, res.params)) || res?.error || wt('unknownError'));
         }
       } catch (err) {
-        showWidgetAlert('error', err.message || 'Lỗi.');
+        showWidgetAlert('error', err.message || wt('unknownError'));
       } finally {
         btnPeer.classList.remove('loading');
         btnPeer.disabled = false;
       }
     });
   }
+
+  // Rating Toast Event Listeners
+  const rateBtn = widgetShadow.getElementById('cs-btn-rate-store');
+  const alreadyRatedBtn = widgetShadow.getElementById('cs-btn-already-rated');
+  const closeRatingBtn = widgetShadow.getElementById('cs-close-rating-btn');
+  const reloadCourseraBtn = widgetShadow.getElementById('cs-btn-reload-coursera');
+
+  if (rateBtn) rateBtn.addEventListener('click', openWidgetReviewPage);
+  if (alreadyRatedBtn) alreadyRatedBtn.addEventListener('click', handleWidgetAlreadyRated);
+  if (closeRatingBtn) closeRatingBtn.addEventListener('click', handleWidgetCloseRating);
+  if (reloadCourseraBtn) reloadCourseraBtn.addEventListener('click', handleWidgetReloadCoursera);
 
   // Initial render
   updateWidgetLanguageUI();
