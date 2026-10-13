@@ -3,6 +3,7 @@ const STORE_REVIEW_URL = 'https://chromewebstore.google.com/detail/coursera-skip
 const I18N = {
   en: {
     langBadge: 'EN',
+    footerDonate: '☕ Support',
     detectedLabel: 'Lesson Detected',
     lessonTypeLabel: 'Type',
     emptyTitle: 'Ready to Automate',
@@ -50,6 +51,7 @@ const I18N = {
   },
   vi: {
     langBadge: 'VI',
+    footerDonate: '☕ Ủng hộ',
     detectedLabel: 'Đã nhận diện bài học',
     lessonTypeLabel: 'Loại bài',
     emptyTitle: 'Sẵn sàng tự động hóa',
@@ -165,6 +167,7 @@ function formatCourseSlug(slug) {
 
 function updateUILanguage() {
   document.getElementById('txt-lang-badge').textContent = t('langBadge');
+  document.getElementById('txt-footer-donate').textContent = t('footerDonate');
   document.getElementById('txt-detected-label').textContent = t('detectedLabel');
   document.getElementById('txt-lesson-type-label').textContent = t('lessonTypeLabel');
   document.getElementById('txt-empty-title').textContent = t('emptyTitle');
@@ -354,6 +357,8 @@ function setLoading(btnId, textId, loading, customTextKey) {
     textEl.textContent = t(customTextKey);
   }
 }
+
+const DONATE_URL = 'https://tuankiet18-dev.github.io/coursera-skip-privacy/donate.html';
 
 function openReviewPage() {
   localStorage.setItem('coursera_has_rated', 'true');
@@ -604,6 +609,11 @@ document.getElementById('btn-auto-review').addEventListener('click', autoGradePe
 document.getElementById('lnk-footer-rate').addEventListener('click', (e) => {
   e.preventDefault();
   openReviewPage();
+});
+
+document.getElementById('lnk-footer-donate').addEventListener('click', (e) => {
+  e.preventDefault();
+  chrome.tabs.create({ url: DONATE_URL });
 });
 
 document.getElementById('btn-rate-store').addEventListener('click', openReviewPage);

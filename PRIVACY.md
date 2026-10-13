@@ -18,6 +18,8 @@ This extension **does NOT collect, store, track, transmit, or share** any person
 ## 3. Third-Party Services
 We do not sell, rent, monetize, or transfer any user data to any third party. The only external API communication possible is directly between the user's browser and Google AI Studio (if the user configures an AI key).
 
+The popup includes an optional "Support" link that opens a donation page (hosted on GitHub Pages) in a new browser tab. The extension itself sends no data when you click it, and no feature is locked behind donations. Any payment is handled entirely by the third-party donation provider on its own page, under its own privacy policy.
+
 ## 4. Legal & Trademark Disclaimer
 "Coursera" is a registered trademark of Coursera Inc. This browser extension is an independent open-source software project developed for personal productivity and study management. It is **not affiliated with, associated with, authorized by, maintained, sponsored, or endorsed by Coursera Inc.** or any of its affiliates or subsidiaries.
 
