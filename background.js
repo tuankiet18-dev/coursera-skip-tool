@@ -158,7 +158,9 @@ async function callGeminiProxy(apiKey, prompt) {
         }),
       });
 
-      if (r.status === 404 && modelIndex + 1 < candidateModels.length) {
+      // 404 (model không tồn tại) hoặc lỗi tạm thời/quá tải (429, 5xx): thử model dự phòng kế tiếp
+      const retryNextModel = r.status === 404 || r.status === 429 || r.status >= 500;
+      if (retryNextModel && modelIndex + 1 < candidateModels.length) {
         return await tryCallGemini(modelIndex + 1, withThinkingConfig);
       }
 

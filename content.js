@@ -566,6 +566,37 @@ async function markAllItemsCompleted() {
 }
 
 /**
+ * Tìm courseItemForumQuestionId trong phản hồi onDemandDiscussionPrompts.
+ * Thử các vị trí đã biết trước, sau đó quét toàn bộ JSON (kể cả "linked") để chịu được thay đổi cấu trúc.
+ */
+function extractForumQuestionId(promptData) {
+  const known = promptData?.elements?.[0]?.promptType?.courseItemForumQuestionId
+    ?? promptData?.elements?.[0]?.question?.courseItemForumQuestionId;
+  if (typeof known === 'string' && known) return known;
+
+  const seen = new Set();
+  const walk = (node) => {
+    if (!node || typeof node !== 'object' || seen.has(node)) return null;
+    seen.add(node);
+    if (typeof node.courseItemForumQuestionId === 'string' && node.courseItemForumQuestionId) {
+      return node.courseItemForumQuestionId;
+    }
+    for (const value of Object.values(node)) {
+      const found = walk(value);
+      if (found) return found;
+    }
+    return null;
+  };
+  return walk(promptData);
+}
+
+function logPromptShape(itemId, promptData) {
+  let dump = '';
+  try { dump = JSON.stringify(promptData).slice(0, 2000); } catch (_) { dump = String(promptData); }
+  console.log('[CourseraSkip] Discussion prompt response had no forum question ID. item:', itemId, 'response:', dump);
+}
+
+/**
  * Kiểm tra xem người dùng đã từng gửi câu trả lời cho questionId này chưa.
  * Phân trang bằng start/limit (limit=50, tối đa 250 items) để không bỏ sót câu trả lời cũ.
  * Ném lỗi nếu request API thất bại để caller không tự ý đăng bài khi chưa kiểm tra được.
@@ -580,7 +611,10 @@ async function hasUserAnsweredDiscussion(courseId, questionId, userId) {
     const checkRes = await courseraFetch(checkUrl);
 
     if (!checkRes.ok) {
-      throw new Error(`API kiểm tra trùng lặp phản hồi mã lỗi HTTP ${checkRes.status}`);
+      const err = new Error(`API kiểm tra trùng lặp phản hồi mã lỗi HTTP ${checkRes.status}`);
+      // 404/405: endpoint không còn hỗ trợ truy vấn này (không phải lỗi tạm thời)
+      err.unsupported = checkRes.status === 404 || checkRes.status === 405;
+      throw err;
     }
 
     const checkData = await checkRes.json();
@@ -597,6 +631,42 @@ async function hasUserAnsweredDiscussion(courseId, questionId, userId) {
   }
 
   return false;
+}
+
+const POSTED_LEDGER_KEY = 'coursera_discussion_posted';
+
+async function readPostedLedger() {
+  try {
+    const data = await chrome.storage.local.get(POSTED_LEDGER_KEY);
+    return data[POSTED_LEDGER_KEY] || {};
+  } catch (_) {
+    return {};
+  }
+}
+
+/** Ghi nhớ cục bộ các câu hỏi đã đăng, dùng khi API kiểm tra trùng không khả dụng. */
+async function recordDiscussionPosted(courseId, questionId, userId) {
+  try {
+    const ledger = await readPostedLedger();
+    ledger[`${userId}~${courseId}~${questionId}`] = Date.now();
+    await chrome.storage.local.set({ [POSTED_LEDGER_KEY]: ledger });
+  } catch (_) {}
+}
+
+/**
+ * Trả về true nếu đã trả lời trước đó. Ưu tiên hỏi API Coursera; nếu API không hỗ trợ (404/405)
+ * thì dùng sổ ghi cục bộ của chính tiện ích. Các lỗi khác (mạng, 5xx, 429...) vẫn ném lỗi để
+ * không đăng bài khi chưa chắc chắn.
+ */
+async function checkAlreadyAnswered(courseId, questionId, userId) {
+  try {
+    return await hasUserAnsweredDiscussion(courseId, questionId, userId);
+  } catch (err) {
+    if (!err.unsupported) throw err;
+    console.log('[CourseraSkip] Duplicate-check API unsupported, using local ledger instead.', err.message);
+    const ledger = await readPostedLedger();
+    return Boolean(ledger[`${userId}~${courseId}~${questionId}`]);
+  }
 }
 
 /**
@@ -696,6 +766,13 @@ async function markAllDiscussionsCompleted() {
   let successCount = 0;
   let failedCount = 0;
   let skippedDuplicate = 0;
+  const failReasons = {};
+  const fail = (stage, detail, item) => {
+    failedCount++;
+    const label = detail ? `${stage} ${detail}` : stage;
+    failReasons[label] = (failReasons[label] || 0) + 1;
+    console.log('[CourseraSkip] Discussion bulk failure:', { itemId: item?.id, stage, detail });
+  };
 
   for (let i = 0; i < total; i++) {
     const item = discussionItems[i];
@@ -706,30 +783,30 @@ async function markAllDiscussionsCompleted() {
 
       const promptRes = await courseraFetch(promptUrl);
       if (!promptRes.ok) {
-        failedCount++;
+        fail('prompt', `HTTP ${promptRes.status}`, item);
       } else {
         const promptData = await promptRes.json();
-        const courseItemForumQuestionId = promptData?.elements?.[0]?.promptType?.courseItemForumQuestionId
-          ?? promptData?.elements?.[0]?.question?.courseItemForumQuestionId;
+        const courseItemForumQuestionId = extractForumQuestionId(promptData);
 
         if (!courseItemForumQuestionId) {
-          failedCount++;
+          logPromptShape(item.id, promptData);
+          fail('questionId', 'missing', item);
         } else {
           const parts = courseItemForumQuestionId.split('~');
           const questionId = parts[2] || parts[parts.length - 1];
 
           if (!questionId) {
-            failedCount++;
+            fail('questionId', 'invalid', item);
           } else {
             // 2. Kiểm tra xem học viên đã từng đăng câu trả lời cho câu này chưa (chống spam trùng lặp)
             let alreadyAnswered = false;
             let checkFailed = false;
             try {
-              alreadyAnswered = await hasUserAnsweredDiscussion(courseId, questionId, userId);
+              alreadyAnswered = await checkAlreadyAnswered(courseId, questionId, userId);
             } catch (checkErr) {
               console.log('[CourseraSkip] Duplicate check failed for item', item.id, checkErr);
               checkFailed = true;
-              failedCount++;
+              fail('duplicate-check', checkErr.message, item);
             }
 
             if (!checkFailed) {
@@ -742,10 +819,11 @@ async function markAllDiscussionsCompleted() {
                 const postRes = await postDiscussionAnswerWithRetry(courseId, questionId, csrfToken, answerText);
 
                 if (postRes && (postRes.ok || postRes.status === 201)) {
+                  await recordDiscussionPosted(courseId, questionId, userId);
                   successCount++;
                 } else {
                   console.log('[CourseraSkip] Failed to post discussion, HTTP status:', postRes?.status);
-                  failedCount++;
+                  fail('post', `HTTP ${postRes?.status}`, item);
                 }
               }
             }
@@ -754,7 +832,7 @@ async function markAllDiscussionsCompleted() {
       }
     } catch (e) {
       console.log('[CourseraSkip] Error posting discussion for item', item.id, e);
-      failedCount++;
+      fail('exception', e.message, item);
     }
 
     completed++;
@@ -774,8 +852,9 @@ async function markAllDiscussionsCompleted() {
   }
 
   const status = failedCount === 0 ? 'completed' : (successCount > 0 ? 'partial' : 'error');
-  const finalKey = failedCount === 0 ? 'completedBulkDisc' : 'partialBulk';
-  const finalParams = failedCount === 0 ? { total } : { success: successCount, failed: failedCount };
+  const failDetail = Object.entries(failReasons).map(([k, v]) => `${k} ×${v}`).join(', ');
+  const finalKey = failedCount === 0 ? 'completedBulkDisc' : 'partialBulkDetail';
+  const finalParams = failedCount === 0 ? { total } : { success: successCount, failed: failedCount, detail: failDetail };
   const finalMsg = wt(finalKey, finalParams);
 
   notifyProgress({
@@ -1321,10 +1400,10 @@ async function autoPostDiscussion() {
       }
 
       const promptData = await promptRes.json();
-      const courseItemForumQuestionId = promptData?.elements?.[0]?.promptType?.courseItemForumQuestionId
-        ?? promptData?.elements?.[0]?.question?.courseItemForumQuestionId;
+      const courseItemForumQuestionId = extractForumQuestionId(promptData);
 
       if (!courseItemForumQuestionId) {
+        logPromptShape(itemId, promptData);
         return {
           success: false,
           error: 'Không tìm thấy forum question ID của bài thảo luận này.',
@@ -1344,7 +1423,7 @@ async function autoPostDiscussion() {
       // 1. Kiểm tra duplicate trước khi gọi bất kỳ API POST hay DOM fallback nào!
       let alreadyAnswered = false;
       try {
-        alreadyAnswered = await hasUserAnsweredDiscussion(courseId, questionId, userId);
+        alreadyAnswered = await checkAlreadyAnswered(courseId, questionId, userId);
       } catch (checkErr) {
         console.log('[CourseraSkip] Duplicate check failed:', checkErr);
         return {
@@ -1366,6 +1445,7 @@ async function autoPostDiscussion() {
       // 2. Gửi trả lời qua API kèm retry nếu gặp 429
       const postRes = await postDiscussionAnswerWithRetry(courseId, questionId, csrfToken, answerText);
       if (postRes && (postRes.ok || postRes.status === 201)) {
+        await recordDiscussionPosted(courseId, questionId, userId);
         return {
           success: true,
           submitted: true,
@@ -1715,7 +1795,7 @@ function fillQuizAnswers(questions, answersFromAI) {
   if (submitBtn) {
     submitBtn.style.outline = '3px solid #10b981';
     submitBtn.style.boxShadow = '0 0 12px rgba(16,185,129,0.6)';
-    submitBtn.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    submitBtn.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
     console.log('[CourseraSkip] Submit button highlighted');
   }
 
@@ -1886,12 +1966,18 @@ const AI_PROVIDERS = {
 
 let currentWidgetProvider = 'gemini';
 // =========================================================================
+const GUIDE_URL = 'https://tuankiet18-dev.github.io/coursera-skip-privacy/guide.html';
+const GITHUB_URL = 'https://github.com/tuankiet18-dev/coursera-skip-tool';
+const DONATE_URL = 'https://tuankiet18-dev.github.io/coursera-skip-privacy/donate.html';
 const STORE_REVIEW_URL = 'https://chromewebstore.google.com/detail/coursera-skip-video-read/jjbgneddmjkolgmpamecbhfgjgdiajlf/reviews';
 
 const WIDGET_I18N = {
   vi: {
     langBadge: 'VI',
     bulkLabel: 'Thao tác hàng loạt',
+    footerRate: 'Đánh giá trên Cửa hàng',
+    footerDonate: '☕ Ủng hộ',
+    footerGuide: '❓ Hướng dẫn',
     confirmTitle: 'Chạy trên toàn bộ khóa học?',
     confirmBulkVR: 'Thao tác này đánh dấu hoàn thành mọi video và bài đọc trong khóa học trên tài khoản Coursera của bạn. Không thể hoàn tác từ tiện ích.',
     confirmBulkDisc: 'Thao tác này đăng phản hồi thảo luận trên toàn khóa học bằng tài khoản của bạn. Không thể hoàn tác các phản hồi đã đăng từ tiện ích.',
@@ -1917,6 +2003,7 @@ const WIDGET_I18N = {
     completedBulk: 'Hoàn thành toàn bộ {total} bài học Video & Reading!',
     completedBulkDisc: 'Hoàn thành toàn bộ {total} bài thảo luận!',
     partialBulk: 'Đã xử lý: {success} thành công, {failed} thất bại.',
+    partialBulkDetail: 'Đã xử lý: {success} thành công, {failed} thất bại ({detail}).',
     partialBulkAlert: 'Một số bài chưa thể hoàn thành.',
     successCurrent: 'Đã hoàn thành bài học.',
     successLecture: 'Video đã hoàn thành.',
@@ -1972,6 +2059,9 @@ const WIDGET_I18N = {
   en: {
     langBadge: 'EN',
     bulkLabel: 'Bulk actions',
+    footerRate: 'Rate on Store',
+    footerDonate: '☕ Support',
+    footerGuide: '❓ Guide',
     confirmTitle: 'Run on the whole course?',
     confirmBulkVR: 'This marks every video and reading in this course as completed on your Coursera account. It cannot be undone from here.',
     confirmBulkDisc: 'This posts discussion replies across the whole course using your account. Posted replies cannot be undone from here.',
@@ -1997,6 +2087,7 @@ const WIDGET_I18N = {
     completedBulk: 'Completed all {total} lessons!',
     completedBulkDisc: 'Completed all {total} discussions!',
     partialBulk: 'Processed: {success} succeeded, {failed} failed.',
+    partialBulkDetail: 'Processed: {success} succeeded, {failed} failed ({detail}).',
     partialBulkAlert: 'Some lessons could not be completed.',
     successCurrent: 'Lesson completed successfully.',
     successLecture: 'Video completed successfully.',
@@ -2382,6 +2473,9 @@ function updateWidgetLanguageUI() {
   setTxt('cs-txt-confirm-title', 'confirmTitle');
   setTxt('cs-txt-confirm-cancel', 'btnCancel');
   setTxt('cs-txt-confirm-ok', 'btnContinue');
+  setTxt('cs-txt-footer-rate', 'footerRate');
+  setTxt('cs-txt-footer-donate', 'footerDonate');
+  setTxt('cs-txt-footer-guide', 'footerGuide');
   if (settingsTitle) settingsTitle.textContent = wt('settingsTitle');
   if (apiKeyLabel) apiKeyLabel.textContent = wt('apiKeyLabel');
   if (apiKeyHint) apiKeyHint.textContent = wt('apiKeyHint');
@@ -2956,6 +3050,25 @@ function initFloatingWidget() {
     }
 
     /* Celebration & Rating Toast */
+    .cs-footer {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: center;
+      gap: 4px 8px;
+      font-size: 11px;
+      color: #64748b;
+      padding-top: 2px;
+    }
+    .cs-footer a {
+      color: #94a3b8;
+      text-decoration: none;
+      transition: color 0.2s ease;
+    }
+    .cs-footer a:hover { color: #38bdf8; }
+    .cs-footer a.cs-star { color: #facc15; }
+    .cs-footer a:focus-visible { outline: 2px solid #a5b4fc; outline-offset: 2px; border-radius: 3px; }
+
     .cs-rating-toast {
       background: rgba(15, 23, 42, 0.95);
       border: 1px solid rgba(234, 179, 8, 0.3);
@@ -3462,6 +3575,17 @@ function initFloatingWidget() {
               <span id="cs-txt-btn-reload-coursera">Reload Page</span>
             </button>
           </div>
+        </div>
+
+        <!-- Footer links -->
+        <div class="cs-footer">
+          <a href="${GITHUB_URL}" target="_blank" rel="noopener noreferrer">GitHub</a>
+          <span>•</span>
+          <a class="cs-star" href="${STORE_REVIEW_URL}" target="_blank" rel="noopener noreferrer"><span id="cs-txt-footer-rate">Rate on Store</span></a>
+          <span>•</span>
+          <a href="${GUIDE_URL}" target="_blank" rel="noopener noreferrer"><span id="cs-txt-footer-guide">❓ Guide</span></a>
+          <span>•</span>
+          <a href="${DONATE_URL}" target="_blank" rel="noopener noreferrer"><span id="cs-txt-footer-donate">☕ Support</span></a>
         </div>
       </div>
     </div>

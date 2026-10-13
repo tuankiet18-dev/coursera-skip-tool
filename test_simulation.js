@@ -415,7 +415,7 @@ function createSandbox(initialUrl = 'https://www.coursera.org/learn/sample-cours
 }
 
 let passedCount = 0;
-let totalCount = 12;
+let totalCount = 13;
 
 async function runTests() {
   // -------------------------------------------------------------
@@ -739,6 +739,56 @@ async function runTests() {
     assert.strictEqual(postAttempted, false, 'POST must NOT be called when duplicate check fails');
     assert.ok(res.error.includes('Không thể kiểm tra'), 'Should return error requiring retry');
     console.log('  -> PASS: duplicate check API error safely aborted without posting\n');
+    passedCount++;
+  }
+
+  // -------------------------------------------------------------
+  // Test 9b: endpoint kiểm tra trùng không hỗ trợ (405) -> dùng sổ cục bộ, không đăng trùng
+  // -------------------------------------------------------------
+  {
+    console.log('Test 9b: duplicate-check 405 falls back to local ledger');
+    const sb = createSandbox('https://www.coursera.org/learn/test/discussionPrompt/prompt1');
+    const store = {};
+    sb.chrome.storage = {
+      local: {
+        get: async (key) => ({ [key]: store[key] }),
+        set: async (obj) => { Object.assign(store, obj); },
+      },
+    };
+    sb.getUserId = async () => 'user123';
+    sb.getCourseId = async () => 'course456';
+    sb.getCsrfToken = () => 'csrf_mock';
+
+    let postCount = 0;
+    sb.courseraFetch = async (url, opts) => {
+      if (url.includes('onDemandDiscussionPrompts.v1')) {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({
+            elements: [{ promptType: { courseItemForumQuestionId: 'course456~item1~q789' } }]
+          })
+        };
+      }
+      if (url.includes('onDemandCourseForumAnswers.v1') && (!opts || opts.method !== 'POST')) {
+        return { ok: false, status: 405 };
+      }
+      if (opts && opts.method === 'POST') {
+        postCount++;
+        return { ok: true, status: 201 };
+      }
+      return { ok: false, status: 404 };
+    };
+
+    const first = await vm.runInContext('autoPostDiscussion()', sb);
+    assert.strictEqual(first.success, true);
+    assert.strictEqual(postCount, 1, 'First run must post once when check endpoint is unsupported');
+
+    const second = await vm.runInContext('autoPostDiscussion()', sb);
+    assert.strictEqual(second.success, true);
+    assert.strictEqual(second.key, 'discAlreadyAnswered');
+    assert.strictEqual(postCount, 1, 'Second run must skip posting thanks to the local ledger');
+    console.log('  -> PASS: 405 handled via local ledger, no duplicate post\n');
     passedCount++;
   }
 

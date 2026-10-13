@@ -34,6 +34,7 @@ const I18N = {
     completedBulk: 'Completed all {total} lessons!',
     completedBulkDisc: 'Completed all {total} discussions!',
     partialBulk: 'Processed: {success} succeeded, {failed} failed.',
+    partialBulkDetail: 'Processed: {success} succeeded, {failed} failed ({detail}).',
     partialBulkAlert: 'Some lessons could not be completed.',
     ratingLabel: 'Lesson Completed',
     ratingLabelBulk: 'Completed {total} Lessons',
@@ -50,6 +51,7 @@ const I18N = {
     ratingThankYou: 'Thank you for your support!',
     footerRate: 'Rate on Store',
     footerDonate: '☕ Support',
+    footerGuide: '❓ Guide',
     bulkLabel: 'Bulk actions',
     confirmTitle: 'Run on the whole course?',
     confirmBulkVR: 'This marks every video and reading in this course as completed on your Coursera account. It cannot be undone from here.',
@@ -119,6 +121,7 @@ const I18N = {
     completedBulk: 'Hoàn thành toàn bộ {total} bài học Video & Reading!',
     completedBulkDisc: 'Hoàn thành toàn bộ {total} bài thảo luận!',
     partialBulk: 'Đã xử lý: {success} thành công, {failed} thất bại.',
+    partialBulkDetail: 'Đã xử lý: {success} thành công, {failed} thất bại ({detail}).',
     partialBulkAlert: 'Một số bài chưa thể hoàn thành.',
     ratingLabel: 'Hoàn thành bài học',
     ratingLabelBulk: 'Hoàn thành {total} bài học',
@@ -135,6 +138,7 @@ const I18N = {
     ratingThankYou: 'Cảm ơn bạn đã luôn ủng hộ tiện ích!',
     footerRate: 'Đánh giá trên Cửa hàng',
     footerDonate: '☕ Ủng hộ',
+    footerGuide: '❓ Hướng dẫn',
     bulkLabel: 'Thao tác hàng loạt',
     confirmTitle: 'Chạy trên toàn bộ khóa học?',
     confirmBulkVR: 'Thao tác này đánh dấu hoàn thành mọi video và bài đọc trong khóa học trên tài khoản Coursera của bạn. Không thể hoàn tác từ tiện ích.',
@@ -284,6 +288,8 @@ function updateUILanguage() {
   document.getElementById('txt-confirm-title').textContent = t('confirmTitle');
   document.getElementById('txt-confirm-cancel').textContent = t('btnCancel');
   document.getElementById('txt-confirm-ok').textContent = t('btnContinue');
+  const footerGuideTxt = document.getElementById('txt-footer-guide');
+  if (footerGuideTxt) footerGuideTxt.textContent = t('footerGuide');
   const footerDonateTxt = document.getElementById('txt-footer-donate');
   if (footerDonateTxt) footerDonateTxt.textContent = t('footerDonate');
 
@@ -499,6 +505,7 @@ async function markAsRated() {
   }
 }
 
+const GUIDE_URL = 'https://tuankiet18-dev.github.io/coursera-skip-privacy/guide.html';
 const DONATE_URL = 'https://tuankiet18-dev.github.io/coursera-skip-privacy/donate.html';
 
 async function openReviewPage() {
@@ -887,6 +894,11 @@ document.getElementById('btn-auto-review').addEventListener('click', autoGradePe
 document.getElementById('lnk-footer-rate').addEventListener('click', (e) => {
   e.preventDefault();
   openReviewPage();
+});
+
+document.getElementById('lnk-footer-guide').addEventListener('click', (e) => {
+  e.preventDefault();
+  chrome.tabs.create({ url: GUIDE_URL });
 });
 
 document.getElementById('lnk-footer-donate').addEventListener('click', (e) => {
