@@ -3,9 +3,9 @@
   <p><strong>A free, open-source browser extension that streamlines Coursera: complete videos and readings, handle discussions and peer reviews, and optionally get AI help on quizzes with your own API key.</strong></p>
   <p>
     <a href="https://chromewebstore.google.com/detail/coursera-skip-video-read/jjbgneddmjkolgmpamecbhfgjgdiajlf">Install</a> ·
-    <a href="https://tuankiet18-dev.github.io/coursera-skip-privacy/guide.html">User guide</a> ·
-    <a href="https://tuankiet18-dev.github.io/coursera-skip-privacy/">Privacy policy</a> ·
-    <a href="https://github.com/tuankiet18-dev/coursera-skip-tool/issues">Report a bug</a>
+    <a href="https://tuankiet18.github.io/coursera-skip-privacy/guide.html">User guide</a> ·
+    <a href="https://tuankiet18.github.io/coursera-skip-privacy/">Privacy policy</a> ·
+    <a href="https://github.com/tuankiet18/coursera-skip-tool/issues">Report a bug</a>
   </p>
 </div>
 
@@ -43,7 +43,7 @@
 - **No server of our own.** The extension never sends your data to the author.
 - API keys and settings stay in your browser's local storage.
 - When you use AI, questions go directly from your browser to the provider you picked.
-- Full details: [Privacy Policy](https://tuankiet18-dev.github.io/coursera-skip-privacy/).
+- Full details: [Privacy Policy](https://tuankiet18.github.io/coursera-skip-privacy/).
 
 ## Install
 
@@ -65,7 +65,7 @@
 
 1. Sign in to Coursera and open a lesson in a course you are **enrolled in**.
 2. The widget appears at the bottom-right of the page, or click the extension icon for the popup.
-3. Pick an action. Read the [user guide](https://tuankiet18-dev.github.io/coursera-skip-privacy/guide.html) for what each button does, how to set up AI keys, and how to fix common errors (503 overload, 429 quota, 401/403 key errors, and more).
+3. Pick an action. Read the [user guide](https://tuankiet18.github.io/coursera-skip-privacy/guide.html) for what each button does, how to set up AI keys, and how to fix common errors (503 overload, 429 quota, 401/403 key errors, and more).
 
 ## Development
 
@@ -79,14 +79,14 @@ node test_simulation.js
 - `popup.html` / `popup.js`: toolbar popup
 - See [CONTRIBUTING.md](./CONTRIBUTING.md) for setup and guidelines.
 
-Contributions are welcome: bug fixes, translations, docs. Open an [issue](https://github.com/tuankiet18-dev/coursera-skip-tool/issues) or a [pull request](https://github.com/tuankiet18-dev/coursera-skip-tool/pulls). When reporting a bug, include the lesson type, the message shown, and the `[CourseraSkip]` lines from the browser console (with personal information removed).
+Contributions are welcome: bug fixes, translations, docs. Open an [issue](https://github.com/tuankiet18/coursera-skip-tool/issues) or a [pull request](https://github.com/tuankiet18/coursera-skip-tool/pulls). When reporting a bug, include the lesson type, the message shown, and the `[CourseraSkip]` lines from the browser console (with personal information removed).
 
 ## Support the project
 
 It is free and stays free. If it saved you time:
 
 - Star this repository.
-- [Support the author on Ko-fi](https://tuankiet18-dev.github.io/coursera-skip-privacy/donate.html) (optional).
+- [Support the author on Ko-fi](https://tuankiet18.github.io/coursera-skip-privacy/donate.html) (optional).
 
 ## Disclaimer
 

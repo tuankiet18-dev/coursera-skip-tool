@@ -505,8 +505,8 @@ async function markAsRated() {
   }
 }
 
-const GUIDE_URL = 'https://tuankiet18-dev.github.io/coursera-skip-privacy/guide.html';
-const DONATE_URL = 'https://tuankiet18-dev.github.io/coursera-skip-privacy/donate.html';
+const GUIDE_URL = 'https://tuankiet18.github.io/coursera-skip-privacy/guide.html';
+const DONATE_URL = 'https://tuankiet18.github.io/coursera-skip-privacy/donate.html';
 
 async function openReviewPage() {
   await markAsRated();

@@ -1966,9 +1966,9 @@ const AI_PROVIDERS = {
 
 let currentWidgetProvider = 'gemini';
 // =========================================================================
-const GUIDE_URL = 'https://tuankiet18-dev.github.io/coursera-skip-privacy/guide.html';
-const GITHUB_URL = 'https://github.com/tuankiet18-dev/coursera-skip-tool';
-const DONATE_URL = 'https://tuankiet18-dev.github.io/coursera-skip-privacy/donate.html';
+const GUIDE_URL = 'https://tuankiet18.github.io/coursera-skip-privacy/guide.html';
+const GITHUB_URL = 'https://github.com/tuankiet18/coursera-skip-tool';
+const DONATE_URL = 'https://tuankiet18.github.io/coursera-skip-privacy/donate.html';
 const STORE_REVIEW_URL = 'https://chromewebstore.google.com/detail/coursera-skip-video-read/jjbgneddmjkolgmpamecbhfgjgdiajlf/reviews';
 
 const WIDGET_I18N = {
