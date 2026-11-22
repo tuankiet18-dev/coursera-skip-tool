@@ -1,7 +1,7 @@
 {
   "name": "Coursera Skip Video & Reading",
   "description": "Streamline Coursera videos, readings, discussions, and course progress with a fast, safe, open-source productivity extension.",
-  "version": "1.7.1",
+  "version": "1.7.2",
   "manifest_version": 3,
   "icons": {
     "48": "icon.png",

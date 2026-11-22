@@ -32,7 +32,7 @@ Please treat everyone with respect, kindness, and empathy. Be constructive in is
 
 ### Reporting Bugs
 If you encounter a bug or if Coursera's DOM/API changes:
-1. Check existing [Issues](https://github.com/tuankiet18/coursera-skip-tool/issues) to see if it has already been reported.
+1. Check existing [Issues](https://github.com/tuankiet18-dev/coursera-skip-tool/issues) to see if it has already been reported.
 2. If not, open a new **Bug Report** including:
    - Your browser name and version (e.g., Chrome 128, Edge 127).
    - Coursera course name / slug and lesson type (Video / Reading).
@@ -57,7 +57,7 @@ No complex build steps or node_modules required! This is a pure, vanilla WebExte
 
 1. **Fork and Clone the repo:**
    ```bash
-   git clone https://github.com/tuankiet18/coursera-skip-tool.git
+   git clone https://github.com/tuankiet18-dev/coursera-skip-tool.git
    cd coursera-skip-tool
    ```
 

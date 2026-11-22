@@ -25,10 +25,10 @@ The popup includes an optional "Support" link that opens a donation page (hosted
 
 ## 5. Live Privacy Policy Website
 The official public privacy policy for this extension is hosted at:  
-👉 https://tuankiet18.github.io/coursera-skip-privacy/
+👉 https://tuankiet18-dev.github.io/coursera-skip-privacy/
 
 ## 6. Contact & Inquiries
 If you have questions or concerns regarding this policy, please contact:  
 - Email: kietboy8@gmail.com  
-- Issues: https://github.com/tuankiet18/coursera-skip-privacy/issues
+- Issues: https://github.com/tuankiet18-dev/coursera-skip-privacy/issues
 
