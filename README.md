@@ -20,8 +20,10 @@
 </p>
 
 <p align="center">
-  <img src="./screenshot-main.png" alt="Coursera Skip popup on an active lesson" width="750">
+  <img src="./docs/widget.png" alt="Coursera Skip floating widget on a lesson page" width="640">
+  <img src="./docs/popup.png" alt="Coursera Skip toolbar popup" width="240">
 </p>
+<p align="center"><em>The floating widget on a lesson page (left) and the toolbar popup (right).</em></p>
 
 > [!IMPORTANT]
 > This is an independent project, **not affiliated with, authorized or endorsed by Coursera**. Using it may violate Coursera's [Terms of Use](https://www.coursera.org/about/terms) and [Honor Code](https://www.coursera.org/about/terms/honorcode). Coursera states that work produced with AI tools can lead to course failure or account deactivation. You are solely responsible for how you use it. See [Disclaimer](#disclaimer).
